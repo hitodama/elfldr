@@ -33,14 +33,14 @@
 
 					if(p.length == 1)
 			            b[p[0]] = '';
-		            else
+					else
 					{
 						var n = parseInt(p[1]);
 						if(n == p[1])
 							b[p[0]] = n;
 						else
 							b[p[0]] = decodeURIComponent(p[1]);//.replace(/\+/g, ' '));
-		            }
+		            		}
 			    }
 			    return b;
 			}
