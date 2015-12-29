@@ -2,16 +2,14 @@
 #define ElfLdr_H
 
 #include <stdint.h>
+#include <elf.h>
 
 /* Warning, written for 64bit systems - need to adapt stuff for 32 */
 #define __ELF_WORD_SIZE 64
 
 /* Defines*/
 
-#if defined(__FREEBSD__) || defined(__PS4__)
-	#include <sys/elf.h>
-#else
-	#include <elf.h>
+#if !(defined(__FREEBSD__) && defined(__PS4__))
 	#ifndef __ElfN
 		#define __ElfNC_(x,y) x ## y
 		#define __ElfNC(x,y)  __ElfNC_(x,y)
