@@ -38,7 +38,12 @@ int main(int argc, char **argv)
 	}
 
 	f = fopen(argv[3], "wb");
-	fprintf(f, "function %s()\n{\n", argv[1]);
+	//fprintf(f, "function %s()\n{\n", argv[1]);
+	fprintf(f, "function Ldr()\n{\n");
+	if(strncmp(argv[1], "Elf", 3) == 0)
+		fprintf(f, "\tthis.isElfLoader = function()\n\t{\n\t\treturn true;\n\t}\n");
+	else
+		fprintf(f, "\tthis.isElfLoader = function()\n\t{\n\t\treturn false;\n\t}\n");
 	fprintf(f, "\tthis.writeData = function(address)\n\t{\n\t\tsetBase(address);\n");
 	for(i = 0; i < dataSize / 4; i++)
 		fprintf(f, "\t\tu32[%i] = 0x%08x;\n", i, data[i]);

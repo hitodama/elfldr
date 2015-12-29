@@ -41,11 +41,7 @@ enum{ ServerBacklog = 10 };
 //	#define Payload 0x926400000 // You should define this in the Makefile
 //#endif
 
-#ifdef __PS4__
-int64_t _main(void)
-#else
 int main(int argc, char **argv)
-#endif
 {
 	int server, client;
 	uint8_t *payload = (uint8_t *)Payload;
@@ -110,11 +106,7 @@ Elf *elfCreateFromFile(char *path)
 	return elfCreate(m, s);
 }
 
-#ifdef __PS4__
-int64_t _main(void)
-#else
 int main(int argc, char **argv)
-#endif
 {
 	#ifdef ElfLdrServer
 		int server, client;

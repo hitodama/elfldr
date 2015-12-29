@@ -8,12 +8,9 @@
 		<script type='text/javascript' src='js/exploit.js'></script>
 		<script type='text/javascript' src='js/just-rop.js'></script>
 		<script type='text/javascript' src='js/gadgets.js'></script>
-		<script type='text/javascript' src='ldr/bin.js'></script>
-		<script type='text/javascript' src='ldr/elf.js'></script>
+		<script type='text/javascript' src='ldr/ldr.js'></script>
 
 		<script type='text/javascript'>
-
-			var isBinaryLoader = false;
 			var loopOnExit = true;
 
 			var debug = 3;
@@ -148,10 +145,7 @@
 						setTimeout(function()
 						{
 							var ldr;
-							if(isBinaryLoader)
-								ldr = new BinLdr();
-							else
-								ldr = new ElfLdr();
+							ldr = new Ldr();
 
 							/*setBase(params['wa1']);
 							for(i = 0; i < size / 4; i++)
@@ -176,7 +170,7 @@
 									document.body.innerHTML += 'Handles and Addresses are: ';
 									document.body.innerHTML += paramsToString(params) + '<br><br>';
 								}
-								if(isBinaryLoader)
+								if(!ldr.isElfLoader())
 									nextStage(params);
 								else if(loopOnExit)
 								{
