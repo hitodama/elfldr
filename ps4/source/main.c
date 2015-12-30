@@ -1,33 +1,19 @@
 #include "common.h"
-#include "elfldr.h"
+#include "elfloader.h"
 #include "protmem.h"
 #include "util.h"
 #include "debug.h"
 
-#if defined(__PS4__) && !defined(ElfLdrServer)
-	#define ElfLdrServer 1
+#if defined(__PS4__) && !defined(ElfLoaderServer)
+	#define ElfLoaderServer 1
 #endif
 
 /*
-#if defined(BinLdr) && !defined(__PS4__)
-	#error BinLdr can't be defined without __PS4__
+#if defined(BinaryLoader) && !defined(__PS4__)
+	#error BinaryLoader can't be defined without __PS4__
 #endif
 */
 
-#if defined(DEBUG) || defined(Debug)
-	#ifdef ElfLdrServer
-		#define debugOpen utilPrintServer
-		#define debugClose fclose
-	#else
-		#define debugOpen(...) stderr
-		#define debugClose(...)
-	#endif
-#else
-	#define debugOpen(...) (FILE *)1
-	#define debugClose(...)
-#endif
-
-enum{ DebugPort = 5052 };
 //hex(P) + hex(S) + 4
 enum{ ServerPort = 5053 };
 enum{ ServerRetry = 20 };
@@ -35,58 +21,8 @@ enum{ ServerTimeout = 1 };
 enum{ ServerBacklog = 10 };
 //enum{ PageSize = 16 * 1024 };
 
-#ifdef BinLdr
-
-//#ifndef Payload
-//	#define Payload 0x926400000 // You should define this in the Makefile
-//#endif
-
-int main(int argc, char **argv)
-{
-	int server, client;
-	uint8_t *payload = (uint8_t *)Payload;
-	ssize_t r;
-	FILE *debug;
-
-	signal(SIGPIPE, SIG_IGN);
-
-	if((debug = debugOpen(DebugPort)) == NULL)
-		return 1;
-	debugPrint(debug, "debugOpen() -> %p\n", debug);
-
-	debugPrint(debug, "Mode -> BinLdr\n");
-
-	debugPrint(debug, "utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
-	if((server = utilServerCreate(ServerPort, ServerBacklog, ServerRetry, ServerTimeout)) < 0)
-		return 2;
-	debugPrint(debug, "%i\n", server);
-
-	debugPrint(debug, "accept(%i, NULL, NULL) -> ", server);
-	if((client = accept(server, NULL, NULL)) < 0)
-	{
-		close(server);
-		return 3;
-	}
-	debugPrint(debug, "%i\n", client);
-
-	while((r = read(client, payload, 4096)) > 0)
-	{
-		debugPrint(debug, "Read %i (0x%x) bytes to %p \n", read, (uint64_t)r, (void *)payload);
-		payload += r;
-	}
-
-	close(client);
-	close(server);
-
-	debugPrint(debug, "debugClose(%p)\n", debug);
-	debugClose(debug);
-
-	return 4;
-}
-
-//#endif
-#else
-//#ifdef ElfLdr
+/* Type */
+typedef int (*Runnable)(int, char **);
 
 Elf *elfCreateFromSocket(int client)
 {
@@ -106,121 +42,181 @@ Elf *elfCreateFromFile(char *path)
 	return elfCreate(m, s);
 }
 
+int binaryLoaderMain(int argc, char **argv)
+{
+	int server, client;
+	uint8_t *payload = (uint8_t *)Payload;
+	ssize_t r;
+
+	signal(SIGPIPE, SIG_IGN);
+
+	if(debugOpen(DebugPort) < 0)
+		return 1;
+	debugPrint("debugOpen(%i)", DebugPort);
+
+	debugPrint("Mode -> BinaryLoader\n");
+
+	debugPrint("utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
+	if((server = utilServerCreate(ServerPort, ServerBacklog, ServerRetry, ServerTimeout)) < 0)
+		return 2;
+	debugPrint("%i\n", server);
+
+	debugPrint("accept(%i, NULL, NULL) -> ", server);
+	if((client = accept(server, NULL, NULL)) < 0)
+	{
+		close(server);
+		return 3;
+	}
+	debugPrint("%i\n", client);
+
+	while((r = read(client, payload, 4096)) > 0)
+	{
+		debugPrint("Read %i (0x%x) bytes to %p \n", read, (uint64_t)r, (void *)payload);
+		payload += r;
+	}
+
+	close(client);
+	close(server);
+
+	debugPrint("debugClose()\n");
+	debugClose();
+
+	return 4;
+}
+
 int main(int argc, char **argv)
 {
-	#ifdef ElfLdrServer
-		int server, client;
-	#endif
+	int server, client; // only used in serverMode
+	int serverMode;
 	Elf *elf;
+	uint64_t size, alignment;
 	ProtectedMemory *memory;
-	int (*run)(void);
+	Runnable run;
 	int64_t ret;
-	FILE *debug;
+
+	#ifdef BinaryLoader
+		return binaryLoaderMain(argc, argv);
+	#endif
+
+	serverMode = 0;
+	#ifdef ElfLoaderServer
+		serverMode = 1;
+	#endif
 
 	signal(SIGPIPE, SIG_IGN);
 
 	/* Get Elf from somewhere */
 
-	if((debug = debugOpen(DebugPort)) == NULL)
-		return EXIT_FAILURE;
+	if(serverMode)
+	{
+		if(debugOpen(DebugPort) < 0)
+			return 1;
+		debugPrint("debugOpen(%i)", DebugPort);
 
-	debugPrint(debug, "debugOpen(%i) -> %p\n", DebugPort, (void *)debug);
+		debugPrint("Mode -> ElfLoader\n");
 
-	debugPrint(debug, "Mode -> ElfLdr\n");
-
-	#ifdef ElfLdrServer
-		debugPrint(debug, "utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
+		debugPrint("utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
 		if((server = utilServerCreate(ServerPort, ServerRetry, ServerTimeout, ServerBacklog)) < 0)
 		{
-			debugPrint(debug, "Server creation failed %i", server);
+			debugPrint("Server creation failed %i", server);
 			return EXIT_FAILURE;
 		}
-		debugPrint(debug, "%i\n", server);
+		debugPrint("%i\n", server);
 
-		debugPrint(debug, "accept(%i, NULL, NULL) -> ", server);
+		debugPrint("accept(%i, NULL, NULL) -> ", server);
 		if((client = accept(server, NULL, NULL)) < 0)
 		{
 			close(server);
-			debugPrint(debug, "Accept failed %i", client);
+			debugPrint("Accept failed %i", client);
 			return EXIT_FAILURE;
 		}
-		debugPrint(debug, "%i\n", client);
+		debugPrint("%i\n", client);
 
-		debugPrint(debug, "elfCreateFromSocket(%i) -> ", client);
+		debugPrint("elfCreateFromSocket(%i) -> ", client);
 		elf = elfCreateFromSocket(client);
-		debugPrint(debug, "%p\n", (void *)elf);
+		debugPrint("%p\n", (void *)elf);
 
 		close(client);
 		close(server);
 
 		if(elf == NULL)
 		{
-			debugPrint(debug, "File doesn't seem to be an ELF\n");
-			debugClose(debug);
+			debugPrint("File doesn't seem to be an ELF\n");
+			debugClose();
 			return EXIT_FAILURE;
 		}
-	#else
+	}
+	else
+	{
+		if(debugOpen(0) < 0)
+			return 1;
+		debugPrint("debugOpen(0) -> stderr");
+
+		debugPrint("Mode -> ElfLoader\n");
+
 		if(argc < 1)
 		{
-			debugPrint(debug, "%s <ELF file>\n", argv[0]);
-			debugClose(debug);
+			debugPrint("%s <ELF file>\n", argv[0]);
+			debugClose();
 			return EXIT_FAILURE;
 		}
 
-		debugPrint(debug, "elfCreateFromFile(%s) -> ", argv[1]);
+		debugPrint("elfCreateFromFile(%s) -> ", argv[1]);
 		if((elf = elfCreateFromFile(argv[1])) == NULL)
 		{
-			debugPrint(debug, "File doesn't seem to be an ELF\n");
-			debugClose(debug);
+			debugPrint("File doesn't seem to be an ELF\n");
+			debugClose();
 			return EXIT_FAILURE;
 		}
-		debugPrint(debug, "%p\n", (void *)elf);
-	#endif
+		debugPrint("%p\n", (void *)elf);
+	}
 
 	/* Got Elf here, Get Memory, Load, Run, ..., Free */
 
-	debugPrint(debug, "protectedMemoryCreate(%p) -> ", (void *)elf);
-	if((memory = protectedMemoryCreate(elf)) == NULL)
+	size = elfMemorySize(elf);
+	alignment = elfLargestAlignment(elf);
+
+	debugPrint("protectedMemoryCreate(%"PRIu64", %"PRIu64") -> ", size, alignment);
+	if((memory = protectedMemoryCreate(size, alignment)) == NULL)
 	{
-		debugPrint(debug, "Memory Setup failed\n");
-		protectedMemoryDebugPrint(debug, memory);
-		debugClose(debug);
+		debugPrint("Memory Setup failed\n");
+		protectedMemoryDebugPrint(memory);
+		debugClose();
 		return EXIT_FAILURE;
 	}
-	debugPrint(debug, "%p\n", (void *)memory);
+	debugPrint("%p\n", (void *)memory);
 
-	debugPrint(debug, "elfLdrLoad(%p, %p, %p) -> ", (void *)elf, memory->writableAligned, memory->executableAligned);
-	if((ret = elfLdrLoad(elf, memory->writableAligned, memory->executableAligned)) < 0)
+	// FIXME: depricate for 3 method calls
+	debugPrint("elfLoaderLoad(%p, %p, %p) -> ", (void *)elf, protectedMemoryGetWritable(memory), protectedMemoryGetExecutable(memory));
+	if((ret = elfLoaderLoad(elf, protectedMemoryGetWritable(memory), protectedMemoryGetExecutable(memory))) < 0)
 	{
-		debugPrint(debug, "Elf could not be loaded (%"PRIx64")\n", ret);
-		protectedMemoryDebugPrint(debug, memory);
-		debugClose(debug);
+		debugPrint("Elf could not be loaded (%"PRIx64")\n", ret);
+		protectedMemoryDebugPrint(memory);
+		debugClose();
 		return EXIT_FAILURE;
 	}
-	debugPrint(debug, "%"PRId64"\n", ret);
+	debugPrint("%"PRId64"\n", ret);
 
-	protectedMemoryDebugPrint(debug, memory);
+	protectedMemoryDebugPrint(memory);
 
-	run = (int (*)(void))((uint8_t *)memory->executableAligned + elfEntry(elf));
-	debugPrint(debug, "run() [%p + 0x%"PRIx64" = %p] -> ", memory->executableAligned, elfEntry(elf), (void *)run);
-	ret = run();
-	debugPrint(debug, "%"PRId64" = %"PRIu64" = 0x%"PRIx64"\n", ret,  ret, ret);
+	run = (Runnable)((uint8_t *)protectedMemoryGetExecutable(memory) + elfEntry(elf));
+	debugPrint("run() [%p + 0x%"PRIx64" = %p] -> ", protectedMemoryGetExecutable(memory), elfEntry(elf), (void *)run);
+	ret = run(0, NULL);
+	debugPrint("%"PRId64" = %"PRIu64" = 0x%"PRIx64"\n", ret,  ret, ret);
 
-	debugPrint(debug, "protectedMemoryDestroy(%p) -> ", (void *)memory);
+	debugPrint("protectedMemoryDestroy(%p) -> ", (void *)memory);
 	if((ret = protectedMemoryDestroy(memory)) < 0)
 	{
-		protectedMemoryDebugPrint(debug, memory);
-		debugPrint(debug, "Memory could not be completely freed (%"PRIx64")\n", ret);
+		protectedMemoryDebugPrint(memory);
+		debugPrint("Memory could not be completely freed (%"PRIx64")\n", ret);
 	}
-	debugPrint(debug, "%"PRId64"\n", ret);
+	debugPrint("%"PRId64"\n", ret);
 
-	debugPrint(debug, "elfDestroyAndFree(%p)\n", (void *)elf);
+	debugPrint("elfDestroyAndFree(%p)\n", (void *)elf);
 	elfDestroyAndFree(elf);
 
-	debugPrint(debug, "debugClose(%p)\n", (void *)debug);
-	debugClose(debug);
+	debugPrint("debugClose()\n");
+	debugClose();
 
 	return EXIT_SUCCESS;
 }
-
-#endif

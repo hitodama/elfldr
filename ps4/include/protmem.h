@@ -1,27 +1,15 @@
 #ifndef ProtMem_H
 #define ProtMem_H
 
-#include "elfldr.h"
+#include "elfloader.h"
 
-typedef struct ProtectedMemory
-{
-	void *writable;
-	void *executable;
-	void *writableAligned;
-	void *executableAligned;
-	int writableHandle;
-	int executableHandle;
+typedef struct ProtectedMemory ProtectedMemory;
 
-	uint64_t size;
-	uint64_t alignment;
-	long pageSize;
-	uint64_t alignedSize;
-}
-ProtectedMemory;
+void *protectedMemoryGetWritable(ProtectedMemory *memory);
+void *protectedMemoryGetExecutable(ProtectedMemory *memory);
 
-//void *elfLdrAlignMemory(void *mem, unsigned long alignment);
-ProtectedMemory *protectedMemoryCreate(Elf *elf);
+ProtectedMemory *protectedMemoryCreate(uint64_t size, uint64_t alignment);
 int protectedMemoryDestroy(ProtectedMemory *memory);
-void protectedMemoryDebugPrint(FILE *debug, ProtectedMemory *memory);
+void protectedMemoryDebugPrint(ProtectedMemory *memory);
 
 #endif

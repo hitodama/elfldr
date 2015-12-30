@@ -1,5 +1,5 @@
 #include "common.h"
-#include "elfldr.h"
+#include "elfloader.h"
 
 /* Defines */
 
@@ -21,6 +21,15 @@
 /* Constants */
 
 enum{ ElfMaximalStringLength = 4096 };
+
+/* Type */
+
+typedef struct Elf
+{
+	uint8_t *data;
+	uint64_t size; // FIXME: Do more checks on size
+}
+Elf;
 
 /* --- elf header --- */
 
@@ -584,7 +593,7 @@ void elfDestroyAndFree(Elf *elf)
 
 /* ---  --- */
 
-uint8_t elfLdrIsLoadable(Elf *elf)
+uint8_t elfLoaderIsLoadable(Elf *elf)
 {
 	ElfHeader *h;
 
@@ -604,7 +613,7 @@ uint8_t elfLdrIsLoadable(Elf *elf)
  		h->e_version == EV_CURRENT;
 }
 
-int elfLdrInstantiate(Elf *elf, void *memory)
+int elfLoaderInstantiate(Elf *elf, void *memory)
 {
 	ElfSection *sections;
 	ElfProgram *programs;
@@ -649,7 +658,7 @@ int elfLdrInstantiate(Elf *elf, void *memory)
 	return 1;
 }
 
-int elfLdrRelativeAddressIsExecutable(Elf *elf, uint64_t address)
+int elfLoaderRelativeAddressIsExecutable(Elf *elf, uint64_t address)
 {
 	ElfSection *sections;
 	ElfProgram *programs;
@@ -688,7 +697,7 @@ int elfLdrRelativeAddressIsExecutable(Elf *elf, uint64_t address)
 	return 1;
 }
 
-int elfLdrRelocate(Elf *elf, void *writable, void *executable)
+int elfLoaderRelocate(Elf *elf, void *writable, void *executable)
 {
 	int i, j;
 
@@ -740,7 +749,7 @@ int elfLdrRelocate(Elf *elf, void *writable, void *executable)
 					return 0;
 			}
 
-			if(elfLdrRelativeAddressIsExecutable(elf, value))
+			if(elfLoaderRelativeAddressIsExecutable(elf, value))
 				*offset = (uint64_t)executable + value;
 			else
 				*offset = (uint64_t)writable + value;
@@ -750,7 +759,7 @@ int elfLdrRelocate(Elf *elf, void *writable, void *executable)
 	return 1;
 }
 
-int elfLdrLoad(Elf *elf, void *writable, void *executable)
+int elfLoaderLoad(Elf *elf, void *writable, void *executable)
 {
 	if(!elf)
 		return -1;
@@ -759,13 +768,13 @@ int elfLdrLoad(Elf *elf, void *writable, void *executable)
  	if(executable == NULL)
 		return -3;
 
-	if(!elfLdrIsLoadable(elf))
+	if(!elfLoaderIsLoadable(elf))
 		return -4;
 
-	if(!elfLdrInstantiate(elf, writable))
+	if(!elfLoaderInstantiate(elf, writable))
 		return -5;
 
-	if(!elfLdrRelocate(elf, writable, executable))
+	if(!elfLoaderRelocate(elf, writable, executable))
 		return -6;
 
 	return 1;

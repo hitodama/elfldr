@@ -22,7 +22,16 @@ include $(LibPS4)/make/libps4.mk
 ###################################
 
 ifeq ($(ldr), bin)
-	CompilerFlags += -DBinLdr
+	CompilerFlags += -DBinaryLoader
+endif
+
+ifdef server
+	CompilerFlags += -DElfLoaderServer
+endif
+
+ifeq ($(memory), emulate)
+	CompilerFlags += -DElfLoaderEmulatePS4Memory
+	Libraries += -lrt
 endif
 
 ###################################

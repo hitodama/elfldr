@@ -1,6 +1,8 @@
 #ifndef Util_H
 #define Util_H
 
+#include <stdint.h>
+
 //FILE *fddupopen(int fd, const char *mode);
 int utilServerCreate(uint16_t port, int backlog, int try, unsigned int sec);
 FILE *utilPrintServer(int port);

@@ -1,37 +1,36 @@
-#ifndef ElfLdr_H
-#define ElfLdr_H
+#ifndef ElfLoader_H
+#define ElfLoader_H
 
 #include <stdint.h>
-#include <elf.h>
 
 /* Warning, written for 64bit systems - need to adapt stuff for 32 */
 #define __ELF_WORD_SIZE 64
 
-/* Defines*/
+#include <elf.h>
 
-#if !(defined(__FREEBSD__) && defined(__PS4__))
-	#ifndef __ElfN
-		#define __ElfNC_(x,y) x ## y
-		#define __ElfNC(x,y)  __ElfNC_(x,y)
-		#define	__ElfN(x) __ElfNC(__ElfNC(__ElfNC(Elf,__ELF_WORD_SIZE),_),x)
-	#endif
-	#ifndef __ELFN
-		#define __ELFNC_(x,y) x ## y
-		#define __ELFNC(x,y)  __ElfNC_(x,y)
-		#define	__ELFN(x) __ElfNC(__ElfNC(__ElfNC(ELF,__ELF_WORD_SIZE),_),x)
-	#endif
+/* Defines which may be missing*/
 
-	#ifndef R_X86_64_JMP_SLOT
-		#define R_X86_64_JMP_SLOT 7
-	#endif
+#ifndef __ElfN
+	#define __ElfNC_(x,y) x ## y
+	#define __ElfNC(x,y)  __ElfNC_(x,y)
+	#define	__ElfN(x) __ElfNC(__ElfNC(__ElfNC(Elf,__ELF_WORD_SIZE),_),x)
+#endif
+#ifndef __ELFN
+	#define __ELFNC_(x,y) x ## y
+	#define __ELFNC(x,y)  __ElfNC_(x,y)
+	#define	__ELFN(x) __ElfNC(__ElfNC(__ElfNC(ELF,__ELF_WORD_SIZE),_),x)
+#endif
 
-	#ifndef IS_ELF
-		#define IS_ELF(ehdr) \
-			((ehdr).e_ident[EI_MAG0] == ELFMAG0 && \
-			(ehdr).e_ident[EI_MAG1] == ELFMAG1 && \
-			(ehdr).e_ident[EI_MAG2] == ELFMAG2 && \
-			(ehdr).e_ident[EI_MAG3] == ELFMAG3)
-	#endif
+#ifndef R_X86_64_JMP_SLOT
+	#define R_X86_64_JMP_SLOT 7
+#endif
+
+#ifndef IS_ELF
+	#define IS_ELF(ehdr) \
+		((ehdr).e_ident[EI_MAG0] == ELFMAG0 && \
+		(ehdr).e_ident[EI_MAG1] == ELFMAG1 && \
+		(ehdr).e_ident[EI_MAG2] == ELFMAG2 && \
+		(ehdr).e_ident[EI_MAG3] == ELFMAG3)
 #endif
 
 /* Neat Types */
@@ -46,12 +45,7 @@ typedef __ElfN(Dyn) ElfDynamic;
 
 /* Type */
 
-typedef struct Elf
-{
-	uint8_t *data;
-	uint64_t size; // FIXME: Do more checks on size
-}
-Elf;
+typedef struct Elf Elf;
 
 /* Enums*/
 
@@ -185,10 +179,10 @@ void elfDestroyAndFree(Elf *elf);
 
 /* --- loader --- */
 
-uint8_t elfLdrIsLoadable(Elf *elf);
+uint8_t elfLoaderIsLoadable(Elf *elf);
 
-int elfLdrInstantiate(Elf *elf, void *memory);
-int elfLdrRelocate(Elf *elf, void *writable, void *executable);
-int elfLdrLoad(Elf *elf, void *writable, void *executable);
+int elfLoaderInstantiate(Elf *elf, void *memory);
+int elfLoaderRelocate(Elf *elf, void *writable, void *executable);
+int elfLoaderLoad(Elf *elf, void *writable, void *executable);
 
 #endif

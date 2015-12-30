@@ -5,37 +5,45 @@ Elf loader
 
 ##Description
 
-The loader is (almost) self-contained. The two (non C) dependencies
-needed are ```libps4``` and Node.js. Node is needed to run the server,
-debug (diagnostic) output client and the file uploader. You will also need
-a current version of clang or alter the Makefile (remove -target for example).
+The loader requires the following things:
+- basic build-tools (clang due to ps4 support)
+- ps4dev/libps4
+- node.js to run the server and client
 
-You can of course use other tools for the job (netcat or a C implementation).
+Node is needed to run the server, debug (diagnostic) output client and the file uploader. You will also need a current version of clang or alter the Makefile (remove -target specifically additionally ld/objectcopy may produce undesired (large) binaries).
 
-Obviously, all libraries need to be statically linked into the executable. You
-can try musl for an easy to build and use statically linkable lib C, to test elfs
-locally as well as the PS4. Libps4 provides a statically linkable lib C for the PS4.
-Be aware that the libps4-examples currently build in binary mode. This will change tomorrow.
+You can of course use other tools for the server, upload and debug output (netcat or a C implementation for example).
+
+The elf loader does not support dynamically linked executables. All libraries need to be statically linked into the executable. You can try musl for an easy to build and use statically linkable libc on your x86-64 linux system (e.g. to test elfs
+locally). Libps4 provides a statically linkable libc for the PS4.
 
 ##Usage and Hints
 ###Make
 ```
-DEBUG=1 Make all
+make clean
+make
+Options:
+	- debug=true			// debug mode
+ 	- target=x86-64			// target of loader
+		- memory=emulate 	// emulate ps4 memory conditions on x86-64
+		- server=true		// build in server mode under x86-64
+	- ldr=bin				// build loader to accept binaries
 ```
-###Local
+###Examples
+####Local
 ```
-#You may want to run through 'local' versions first
-# (Local) Hello World
-bin/local/elfldr bin/example/null
-# (Local) Hello World with memory restrictions similar to the PS4s Jit
-bin/local/elfldr-protmem bin/example/stress
-# (Local) Hello World in server mode (see example below)
-# In debug mode connect to 5052, then send the file over 5053
-bin/local/elfldr-srv
-#Lastly
-bin/local/elfldr-protmem-srv
+// build for ps4
+make clean && make debug=true
+// build for local system
+make clean && make debug=true target=x86-64 memory=emulate
+Now you can try: bin/ldr ../../libps4-examples/libless/stress/bin/stress
+make clean && make debug=true target=x86-64 memory=emulate server=true
+Now you can try: bin/ldr
+Then connect to 5052 and send the file over 5053
+node client.js 127.0.0.1
+node client.js 127.0.0.1 5053 ../../libps4-examples/libless/stress/bin/stress
 ```
-###PS4
+####PS4
 ```
 #Start server
 node server.js
@@ -44,56 +52,34 @@ node server.js
 # Connect debug channel (if build with DEBUG=1 make)
 node client.js 192.168.1.45
 # Send file
-node client.js 192.168.1.45 5053 ../ps4/stress
+node client.js 192.168.1.45 5053 ../../libps4-examples/libless/stress/bin/stress
 # Return code is not returned to the browser (0 is)
 # Use debug or your own IO channel (socket) for that
 ```
 
 # Internals
 
-It is advised to look into the Makefile, index.html and other files as they will
-(hopefully somewhat understandably) show you switches (flags) you can use and
-what they do.
+You may want to look into the Makefile, main.c, protmem.c, index.html and other files as they will (hopefully somewhat understandably) show you switches (flags) you can use and what they do.
 
 ##Switches
 ###local/index.html
 ```
-var isBinaryLoader = false; // accept elfs / bins on 5053
 var loopOnExit = true; // wait again after normal termination of code (otherwise segfault)
-
 var debug = 3; // show more or less infos in load steps
 var debugWait = 4000; // wait per step (to read info) applied on debug >= 3
 ```
 
-###In Makefile (Defines)
+###Defines used
 ```
 __PS4__ // Set in the Makefile for all PS4 builds
 Debug || DEBUG // Set one of the env. variables to build in debug mode (see below)
 Libps4 || LIBPS4 // Set one of the env. variables to the Libps4 path
-ElfLdrServer // Run loader as server (Also Auto-set on __PS4__)
-ElfLdrEmulatePS4Memory // emulate PS4 memory conditions - good for impl. new relocs
-BinLdr // run as bin loader
-```
-##Files
-```
-/ps4/bin/example/stress // shows vars and relocs working
-/ps4/bin/example/forawhile // hangs
-/ps4/bin/example/null // minimal test, does nothing but return
-/ps4/bin/ldrgen // generates js loaders
-
-/ps4/bin/ps4/binldr.bin // converted to js and automatically put in local/ldr
-/ps4/bin/ps4/binldr.elf // for readelf and object copy mostly
-/ps4/bin/ps4/elfldr.bin // converted to js and automatically put in local/ldr
-/ps4/bin/ps4/elfldr.elf // for readelf and object copy mostly
-
-// if you got a bug, try them bottom to top to find out what the trouble is
-/ps4/bin/local/elfldr-protmem-srv // local server mode loader
-/ps4/bin/local/elfldr-protmem // local file based protected memory version
-/ps4/bin/local/elfldr-srv // server mode, with simple memory version
-/ps4/bin/local/elfldr // file based, simple memory version
+ElfLoaderServer // Run loader as server (Also Auto-set on __PS4__)
+ElfLoaderEmulatePS4Memory // emulate PS4 memory conditions - good for impl. new relocs
+BinaryLoader // run as binary loader
 ```
 
-##Example
+##Complete PS4 Debug Example
 
 ###Start the server
 ```
@@ -139,8 +125,8 @@ debugClose(880679da0)
 ```
 $ node client.js 192.168.1.45 5053 ../ps4/stress
 [local]: Trying to connect to 192.168.1.45:5053
-[local]: Connected 192.168.178.1:5053
-[local]: File (../ps4/stress) provided -> sending mode
+[local]: Connected 192.168.1.45:5053
+[local]: File (../../libps4-examples/libless/stress/bin/stress) provided -> sending mode
 [local]: Sending file
 [local]: Send file
 [local]: Connection closed
@@ -153,7 +139,6 @@ Binary mode works analogous but is not advertised (since more may go wrong).
 	- Obsolete immediately thereafter ^__^
 - Unmap and unjit etc. appropriately
 - Error handling improvements
-- Clean up further / spilt mains out
 - Stub debugger in?
 - Neat loader screen -__-? Probably on a lazy day.
 

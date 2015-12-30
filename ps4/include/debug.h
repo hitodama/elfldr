@@ -1,11 +1,18 @@
 #ifndef Debug_H
 #define Debug_H
 
+enum{ DebugPort = 5052 };
+
 #if defined(DEBUG) || defined(Debug)
-	int dfprintf(FILE *stream, const char *format, ...);
-	#define debugPrint dfprintf
+	#include <stdio.h>
+
+	int debugOpen(int port);
+	int debugPrint(const char *format, ...);
+	int debugClose();
 #else
-	#define debugPrint(...)
+	#define debugPrint(...) 1
+	#define debugOpen(...) 1
+	#define debugClose(...) 1
 #endif
 
 #endif
