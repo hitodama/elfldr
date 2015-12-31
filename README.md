@@ -23,19 +23,22 @@ locally). Libps4 provides a statically linkable libc for the PS4.
 make clean
 make
 Options:
-	- debug=true			// debug mode
- 	- target=x86-64			// target of loader
-		- memory=emulate 	// loader defaults to emulate ps4 memory conditions on x86-64
-		- server=true		// loader defaults to server mode under x86-64
-	- ldr=bin				// build loader to accept binaries
+	debug=true			// set loader default to debug mode
+ 	target=x86-64		// target of loader, build for x86-64
+		memory=emulate 	// set loader default to emulate ps4 memory conditions on x86-64
+		server=true		// set loader default to server mode under x86-64
+	target=ps4-bin		// (default) build as bin for the PS4
+		keepelf=true	// keeps elf before converting it to bin (for debug purposes)
+	(ldr=bin			// build loader to accept binaries instead of elfs - best not used)
 ```
-###Commandline Arguments
+###Commandline (x86-64) Arguments
 ```
 --memory-plain				// use plain memory despite the build-in defaults
 --memory-emulate			// use emulate memory
 --file						// use file input
 --server					// use server (5053) input, and debug (5052) if enabled
-
+--debug						// enable debug mode
+--no-debug					// disable debug mode
 ```
 ###Examples
 ####Local

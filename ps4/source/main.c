@@ -164,6 +164,8 @@ int main(int argc, char **argv)
 		argvFile = 0; // dummy to supress warning
 	#else
 		argvFile = getLoaderArguments(argc, argv, &memoryMode, &elfInputMode, &debugMode);
+		if(elfInputMode == ElfInputModeFile && argvFile == 0)
+			return EXIT_FAILURE; // no file provided in file mode
 	#endif
 
 	signal(SIGPIPE, SIG_IGN);
