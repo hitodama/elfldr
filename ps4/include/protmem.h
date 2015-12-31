@@ -9,7 +9,10 @@ void *protectedMemoryGetWritable(ProtectedMemory *memory);
 void *protectedMemoryGetExecutable(ProtectedMemory *memory);
 
 ProtectedMemory *protectedMemoryCreate(uint64_t size, uint64_t alignment);
+ProtectedMemory *protectedMemoryCreateEmulation(uint64_t size, uint64_t alignment);
 int protectedMemoryDestroy(ProtectedMemory *memory);
-void protectedMemoryDebugPrint(ProtectedMemory *memory);
+int protectedMemoryDestroyEmulated(ProtectedMemory *memory);
+
+void protectedMemoryDebugPrint(FILE *file, ProtectedMemory *memory);
 
 #endif

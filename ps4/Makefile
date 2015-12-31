@@ -25,12 +25,15 @@ ifeq ($(ldr), bin)
 	CompilerFlags += -DBinaryLoader
 endif
 
-ifdef server
+ifeq ($(server), true)
 	CompilerFlags += -DElfLoaderServer
 endif
 
 ifeq ($(memory), emulate)
 	CompilerFlags += -DElfLoaderEmulatePS4Memory
+endif
+
+ifeq ($(target), x86-64)
 	Libraries += -lrt
 endif
 

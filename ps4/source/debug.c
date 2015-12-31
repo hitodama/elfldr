@@ -3,52 +3,25 @@
 
 #include "debug.h"
 
-#if defined(DEBUG) || defined(Debug)
-
-static FILE *debugStream;
-
-int debugOpen(int port)
-{
-	if(port == 0)
-	{
-		int fd = dup(STDERR_FILENO);
-		if(fd < 0)
-			return -1;
-		debugStream = fdopen(fd, "wb");
-	}
-	else
-		debugStream = utilPrintServer(port);
-
-	if(debugStream == NULL)
-		return -2;
-	return 1;
-}
-
-int debugPrint(const char *format, ...)
+int debugPrint(FILE *file, const char *format, ...)
 {
 	va_list args;
 	int r;
 
-	if(debugStream == NULL)
+	if(file == NULL)
 		return -1;
 
     va_start(args, format);
-    r = vfprintf(debugStream, format, args);
-	fflush(debugStream); // force flush
+    r = vfprintf(file, format, args);
+	fflush(file); // force flush
     va_end(args);
 
 	return r;
 }
 
-int debugClose()
+int debugClose(FILE *file)
 {
-	if(debugStream == NULL)
+	if(file == NULL)
 		return -1;
-
-	if(fclose(debugStream) != 0)
-		return -1;
-
-	return 1;
+	return fclose(file);
 }
-
-#endif

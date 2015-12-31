@@ -25,9 +25,17 @@ make
 Options:
 	- debug=true			// debug mode
  	- target=x86-64			// target of loader
-		- memory=emulate 	// emulate ps4 memory conditions on x86-64
-		- server=true		// build in server mode under x86-64
+		- memory=emulate 	// loader defaults to emulate ps4 memory conditions on x86-64
+		- server=true		// loader defaults to server mode under x86-64
 	- ldr=bin				// build loader to accept binaries
+```
+###Commandline Arguments
+```
+--memory-plain				// use plain memory despite the build-in defaults
+--memory-emulate			// use emulate memory
+--file						// use file input
+--server					// use server (5053) input, and debug (5052) if enabled
+
 ```
 ###Examples
 ####Local
@@ -74,8 +82,8 @@ var debugWait = 4000; // wait per step (to read info) applied on debug >= 3
 __PS4__ // Set in the Makefile for all PS4 builds
 Debug || DEBUG // Set one of the env. variables to build in debug mode (see below)
 Libps4 || LIBPS4 // Set one of the env. variables to the Libps4 path
-ElfLoaderServer // Run loader as server (Also Auto-set on __PS4__)
-ElfLoaderEmulatePS4Memory // emulate PS4 memory conditions - good for impl. new relocs
+ElfLoaderServer // Run loader as server by default (Also Auto-set on __PS4__)
+ElfLoaderEmulatePS4Memory // emulate PS4 memory conditions by default - good for impl. new relocs
 BinaryLoader // run as binary loader
 ```
 
@@ -87,8 +95,7 @@ node server.js
 Serving directory elfldr/local on port 5350
 ```
 
-###(In debug mode) connect to debug channel. For a non-debug build no such
-connection can be made.
+###(In debug mode) connect to debug channel. For a non-debug build no such connection can be made.
 ```
 $ node client.js 192.168.1.45
 [local]: Trying to connect to 192.168.1.45:5052

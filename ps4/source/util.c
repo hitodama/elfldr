@@ -78,7 +78,7 @@ FILE *utilPrintServer(int port)
 	out = fddupopen(client, "wb");
 	close(client);
 	//setvbuf(in, NULL, _IOLBF, 0);
-	//setvbuf(out, NULL, _IONBF, 0);
+	setvbuf(out, NULL, _IONBF, 0);
 
 	return out;
 }
