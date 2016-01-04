@@ -3,7 +3,18 @@
 
 enum{ DebugPort = 5052 };
 
-int debugPrint(FILE *file, const char *format, ...);
-int debugClose(FILE *file);
+#if defined(Debug) || defined(DEBUG)
+
+int debugOpen(FILE *file);
+int debugPrint(const char *format, ...);
+int debugClose();
+
+#else
+
+#define debugOpen(...) 1
+#define debugPrint(...) 1
+#define debugClose(...) 0
+
+#endif
 
 #endif

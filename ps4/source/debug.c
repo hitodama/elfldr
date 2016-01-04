@@ -3,25 +3,40 @@
 
 #include "debug.h"
 
-int debugPrint(FILE *file, const char *format, ...)
+#if defined(Debug) || defined(DEBUG)
+
+static FILE *debug;
+
+int debugOpen(FILE *file)
+{
+	debug = file;
+	if(debug == NULL)
+		return 0;
+	return 1;
+}
+
+int debugPrint(const char *format, ...)
 {
 	va_list args;
 	int r;
 
-	if(file == NULL)
-		return -1;
+	if(debug == NULL)
+		return 0;
 
     va_start(args, format);
-    r = vfprintf(file, format, args);
-	fflush(file); // force flush
+    r = vfprintf(debug, format, args);
+	fflush(debug); // force flush
     va_end(args);
 
 	return r;
 }
 
-int debugClose(FILE *file)
+int debugClose()
 {
-	if(file == NULL)
-		return -1;
-	return fclose(file);
+	if(debug == NULL)
+		return 0;
+	return fclose(debug);
+	debug = NULL;
 }
+
+#endif

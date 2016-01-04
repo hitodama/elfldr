@@ -11,8 +11,8 @@ void *protectedMemoryGetExecutable(ProtectedMemory *memory);
 ProtectedMemory *protectedMemoryCreate(uint64_t size, uint64_t alignment);
 ProtectedMemory *protectedMemoryCreateEmulation(uint64_t size, uint64_t alignment);
 int protectedMemoryDestroy(ProtectedMemory *memory);
-int protectedMemoryDestroyEmulated(ProtectedMemory *memory);
+int protectedMemoryDestroyEmulation(ProtectedMemory *memory);
 
-void protectedMemoryDebugPrint(FILE *file, ProtectedMemory *memory);
+void protectedMemoryDebugPrint(ProtectedMemory *memory);
 
 #endif

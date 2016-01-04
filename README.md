@@ -29,6 +29,7 @@ Options:
 		server=true		// set loader default to server mode under x86-64
 	target=ps4-bin		// (default) build as bin for the PS4
 		keepelf=true	// keeps elf before converting it to bin (for debug purposes)
+	threading=true		// sets loader default to run elfs threaded (ignored in file mode)
 	(ldr=bin			// build loader to accept binaries instead of elfs - best not used)
 ```
 ###Commandline (x86-64) Arguments
@@ -39,33 +40,41 @@ Options:
 --server					// use server (5053) input, and debug (5052) if enabled
 --debug						// enable debug mode
 --no-debug					// disable debug mode
+--threading					// enable threading mode (multiple elfs can be executed async - to close the server, send a non-elf - this mode does not print return codes)
+--no-threading				// disable threading mode (only one elf runs blocking)
 ```
 ###Examples
 ####Local
 ```
-// build for ps4
+// build for the ps4
 make clean && make debug=true
-// build for local system
+
+// build for the local system
 make clean && make debug=true target=x86-64 memory=emulate
-Now you can try: bin/ldr ../../libps4-examples/libless/stress/bin/stress
-make clean && make debug=true target=x86-64 memory=emulate server=true
-Now you can try: bin/ldr
+//Now you can try: bin/ldr ../../libps4-examples/libless/stress/bin/stress
+
+// use args to dynamically set modes
+make clean && make target=x86-64
+Now you can try: bin/ldr --debug --server --memory-emulate --threading
 Then connect to 5052 and send the file over 5053
 node client.js 127.0.0.1
+node client.js 127.0.0.1 5053 ../../libps4-examples/libless/stress/bin/stress
 node client.js 127.0.0.1 5053 ../../libps4-examples/libless/stress/bin/stress
 ```
 ####PS4
 ```
-#Start server
+// Start server
 node server.js
-#Browse to server
-# Wait until it hangs in step 5
-# Connect debug channel (if build with DEBUG=1 make)
+
+// Browse to server
+// Wait until it hangs in step 5
+// Connect debug channel (if build with DEBUG=1 make)
 node client.js 192.168.1.45
-# Send file
+
+// Send file
 node client.js 192.168.1.45 5053 ../../libps4-examples/libless/stress/bin/stress
-# Return code is not returned to the browser (0 is)
-# Use debug or your own IO channel (socket) for that
+// Return code is not returned to the browser (0 is)
+// Use your own IO channel (socket) or debug
 ```
 
 # Internals
@@ -88,6 +97,7 @@ Libps4 || LIBPS4 // Set one of the env. variables to the Libps4 path
 ElfLoaderServer // Run loader as server by default (Also Auto-set on __PS4__)
 ElfLoaderEmulatePS4Memory // emulate PS4 memory conditions by default - good for impl. new relocs
 BinaryLoader // run as binary loader
+ElfLoaderThreading // run as threading server
 ```
 
 ##Complete PS4 Debug Example
@@ -147,7 +157,6 @@ Binary mode works analogous but is not advertised (since more may go wrong).
 ##TODO
 - Wait for Kernel -__-?
 	- Obsolete immediately thereafter ^__^
-- Unmap and unjit etc. appropriately
 - Error handling improvements
 - Stub debugger in?
 - Neat loader screen -__-? Probably on a lazy day.

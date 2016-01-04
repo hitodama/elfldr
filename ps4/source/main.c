@@ -5,40 +5,38 @@
 #include "debug.h"
 
 #if defined(BinaryLoader) && !defined(__PS4__)
-	#error BinaryLoader can currently not be build on x86-64
+	#error BinaryLoader can not be build on x86-64
 #endif
 
-//enum{ DebugPort = 5052 };
-//hex(P) + hex(S)
-enum{ ServerPort = 5053 };
+/* Types */
+
+typedef int (*Runnable)(int, char **);
+
+typedef struct MainAndMemory
+{
+	Runnable main;
+	ProtectedMemory *memory;
+}
+MainAndMemory;
+
+/* Constants */
+
+enum{ ServerPort = 5053 }; //hex(P) + hex(S)
 enum{ ServerRetry = 20 };
 enum{ ServerTimeout = 1 };
 enum{ ServerBacklog = 10 };
 //enum{ PageSize = 16 * 1024 };
-enum{ MemoryModePlain = 0, MemoryModeEmulate = 1 };
-enum{ ElfInputModeFile = 0, ElfInputModeServer = 1 };
-enum{ DebugModeOff = 0, DebugModeOn = 1 };
 
-/* Type */
-typedef int (*Runnable)(int, char **);
+enum{ MemoryPlain = 0, MemoryEmulate = 1 };
+enum{ ElfInputFile = 0, ElfInputServer = 1 };
+enum{ ThreadingNone = 0, Threading = 1 };
+enum{ DebugOff = 0, DebugOn = 1 };
 
-Elf *elfCreateFromSocket(int client)
-{
-	uint64_t s;
-	void * m = utilAllocUnsizeableFileFromDescriptor(client, &s);
-	if(m == NULL)
-		return NULL;
-	return elfCreate(m, s);
-}
+/* Globals */
 
-Elf *elfCreateFromFile(char *path)
-{
-	uint64_t s;
-	void * m = utilAllocFile(path, &s);
-	if(m == NULL)
-		return NULL;
-	return elfCreate(m, s);
-}
+static int elfInputMode, memoryMode, debugMode, threadingMode;
+
+/* Binary loader (backwards compatibility) */
 
 #ifdef BinaryLoader
 int main(int argc, char **argv)
@@ -46,48 +44,57 @@ int main(int argc, char **argv)
 int binaryLoaderMain(int argc, char **argv)
 #endif
 {
-	FILE *debug;
 	int server, client;
 	uint8_t *payload = (uint8_t *)Payload;
 	ssize_t r;
 
 	signal(SIGPIPE, SIG_IGN);
 
-	if((debug = utilPrintServer(DebugPort)) == NULL)
-		return 1;
-	debugPrint(debug, "debugOpen(%i)", DebugPort);
+	if(!debugOpen(utilPrintServer(DebugPort)))
+		return EXIT_FAILURE;
 
-	debugPrint(debug, "Mode -> BinaryLoader\n");
+	debugPrint("debugOpen(utilPrintServer(%i))", DebugPort);
 
-	debugPrint(debug, "utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
+	debugPrint("Mode -> BinaryLoader\n");
+
+	debugPrint("utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
 	if((server = utilServerCreate(ServerPort, ServerBacklog, ServerRetry, ServerTimeout)) < 0)
-		return 2;
-	debugPrint(debug, "%i\n", server);
+	{
+		debugPrint("Could not create server (return: %i)", server);
+		return EXIT_FAILURE;
+	}
+	debugPrint("%i\n", server);
 
-	debugPrint(debug, "accept(%i, NULL, NULL) -> ", server);
+	debugPrint("accept(%i, NULL, NULL) -> ", server);
 	if((client = accept(server, NULL, NULL)) < 0)
 	{
+		debugPrint("Could not accept client (return: %i)", client);
 		close(server);
-		return 3;
+		return EXIT_FAILURE;
 	}
-	debugPrint(debug, "%i\n", client);
+	debugPrint("%i\n", client);
 
 	while((r = read(client, payload, 4096)) > 0)
 	{
-		debugPrint(debug, "Read %"PRIi64" (0x%"PRIx64") bytes to %p \n", (int64_t)r, (uint64_t)r, (void *)payload);
+		debugPrint("Read %"PRIi64" (0x%"PRIx64") bytes to %p \n", (int64_t)r, (uint64_t)r, (void *)payload);
 		payload += r;
 	}
 
-	close(client);
-	close(server);
+	debugPrint("close(%i) -> ", client);
+	debugPrint("%i\n", close(client));
+	debugPrint("close(%i) -> ", server);
+	debugPrint("%i\n", close(server));
 
-	debugPrint(debug, "debugClose(%p)\n", (void *)debug);
-	debugClose(debug);
+	debugPrint("Executing binary at %p", payload);
 
-	return 4;
+	debugPrint("debugClose()\n");
+	debugClose();
+
+	return EXIT_SUCCESS;
 }
 
-int getLoaderArguments(int argc, char **argv, int *memoryMode, int *elfInputMode, int *debugMode)
+// pragmantic impl.
+int getLoaderArguments(int argc, char **argv, int *memoryMode, int *elfInputMode, int *threadingMode, int *debugMode)
 {
 	int i;
 	int r = 0;
@@ -97,25 +104,33 @@ int getLoaderArguments(int argc, char **argv, int *memoryMode, int *elfInputMode
 		if(memoryMode != NULL)
 		{
 			if(strcmp(argv[i], "--memory-plain") == 0)
-				*memoryMode = MemoryModePlain;
+				*memoryMode = MemoryPlain;
 			if(strcmp(argv[i], "--memory-emulate") == 0)
-				*memoryMode = MemoryModeEmulate;
+				*memoryMode = MemoryEmulate;
 		}
 
 		if(elfInputMode != NULL)
 		{
 			if(strcmp(argv[i], "--file") == 0)
-				*elfInputMode = ElfInputModeFile;
+				*elfInputMode = ElfInputFile;
 			if(strcmp(argv[i], "--server") == 0)
-				*elfInputMode = ElfInputModeServer;
+				*elfInputMode = ElfInputServer;
 		}
 
-		if(elfInputMode != NULL)
+		if(threadingMode != NULL)
+		{
+			if(strcmp(argv[i], "--threading") == 0)
+				*threadingMode = Threading;
+			if(strcmp(argv[i], "--no-threading") == 0)
+				*threadingMode = ThreadingNone;
+		}
+
+		if(debugMode != NULL)
 		{
 			if(strcmp(argv[i], "--debug") == 0)
-				*debugMode = DebugModeOn;
+				*debugMode = DebugOn;
 			if(strcmp(argv[i], "--no-debug") == 0)
-				*debugMode = DebugModeOff;
+				*debugMode = DebugOff;
 		}
 
 		if(memcmp(argv[i], "--", 2) != 0)
@@ -125,182 +140,397 @@ int getLoaderArguments(int argc, char **argv, int *memoryMode, int *elfInputMode
 	return r;
 }
 
+/* elf utils */
+
+Elf *elfCreateFromSocket(int client)
+{
+	Elf *elf;
+	uint64_t s;
+
+	void * m = utilAllocUnsizeableFileFromDescriptor(client, &s);
+	if(m == NULL)
+		return NULL;
+	elf = elfCreate(m, s);
+	if(!elfLoaderIsLoadable(elf))
+	{
+		free(m);
+		elf = NULL;
+	}
+
+	return elf;
+}
+
+Elf *elfCreateFromFile(char *path)
+{
+	Elf *elf;
+	uint64_t s;
+
+	void * m = utilAllocFile(path, &s);
+	if(m == NULL)
+		return NULL;
+	elf = elfCreate(m, s);
+	if(!elfLoaderIsLoadable(elf))
+	{
+		free(m);
+		elf = NULL;
+	}
+
+	return elf;
+}
+
+/* elf loader surface (view) wrappers*/
+
+int elfLoaderServerCreate()
+{
+	int server;
+
+	debugPrint("%s: utilServerCreate(%i, %i, %i) -> ", __func__, ServerPort, ServerRetry, ServerTimeout);
+	if((server = utilServerCreate(ServerPort, ServerRetry, ServerTimeout, ServerBacklog)) < 0)
+		debugPrint("Server creation failed %i", server);
+	else
+		debugPrint("%i\n", server);
+
+	return server;
+}
+
+Elf *elfLoaderServerAcceptElf(int server)
+{
+	int client;
+	Elf *elf;
+
+	if(server < 0)
+	{
+		debugPrint("%s: Server is not a file descriptor", __func__);
+		return NULL;
+	}
+
+	debugPrint("%s: accept(%i, NULL, NULL) -> ", __func__, server);
+	if((client = accept(server, NULL, NULL)) < 0)
+	{
+		close(server);
+		debugPrint("Accept failed %i", client);
+		return NULL;
+	}
+	debugPrint("%i\n", client);
+
+	debugPrint("%s: elfCreateFromSocket(%i) -> ", __func__, client);
+	elf = elfCreateFromSocket(client);
+
+	if(elf == NULL)
+		debugPrint("File could not be read or doesn't seem to be an ELF\n");
+	else
+		debugPrint("%p\n", (void *)elf);
+
+	debugPrint("%s: close(%i) -> ", __func__, client);
+	debugPrint("%i\n", close(client));
+
+	return elf;
+}
+
+void elfLoaderServerDestroy(int server)
+{
+	if(server < 0)
+	{
+		debugPrint("%s: Server is not a file descriptor", __func__);
+		return;
+	}
+
+	debugPrint("%s: close(%i) -> ", __func__, server);
+	debugPrint("%i\n", close(server));
+}
+
+Elf *elfLoaderCreateElfFromPath(char *file)
+{
+	Elf *elf;
+
+	if(file == NULL)
+	{
+		debugPrint("%s: File path is NULL", __func__);
+		return NULL;
+	}
+
+	debugPrint("%s: elfCreateFromFile(%s) -> ", __func__, file);
+	if((elf = elfCreateFromFile(file)) == NULL)
+		debugPrint("File doesn't seem to be an ELF\n");
+	else
+		debugPrint("%p\n", (void *)elf);
+
+	return elf;
+}
+
+ProtectedMemory *elfLoaderMemoryCreate(Elf *elf)
+{
+	uint64_t size, alignment;
+	ProtectedMemory *memory;
+
+	if(elf == NULL)
+	{
+		debugPrint("%s: Elf is NULL", __func__);
+		return NULL;
+	}
+
+	size = elfMemorySize(elf);
+	alignment = elfLargestAlignment(elf);
+
+	debugPrint("%s: protectedMemoryCreate(%"PRIu64", %"PRIu64") -> ", __func__, size, alignment);
+
+	if(memoryMode == MemoryEmulate)
+		memory = protectedMemoryCreateEmulation(size, alignment);
+	else
+		memory = protectedMemoryCreate(size, alignment);
+
+	if(memory == NULL)
+		debugPrint("Memory Setup failed\n", __func__);
+	else
+		debugPrint("%p\n", (void *)memory);
+
+	return memory;
+}
+
+int elfLoaderMemoryDestroySilent(ProtectedMemory *memory)
+{
+	int r;
+
+	if(memory == NULL)
+		return -1;
+
+	if(memoryMode == MemoryEmulate)
+		r = protectedMemoryDestroyEmulation(memory);
+	else
+		r = protectedMemoryDestroy(memory);
+
+	return r;
+}
+
+int elfLoaderMemoryDestroy(ProtectedMemory *memory)
+{
+	int r;
+
+	if(memory == NULL)
+	{
+		debugPrint("%s: Memory is NULL", __func__);
+		return -1;
+	}
+
+	debugPrint("%s: protectedMemoryDestroy(%p) -> ", __func__, (void *)memory);
+	r = elfLoaderMemoryDestroySilent(memory);
+
+	if(r < 0)
+	{
+		protectedMemoryDebugPrint(memory);
+		debugPrint("Memory could not be completely freed - ");
+	}
+	debugPrint("%i\n", r);
+
+	return r;
+}
+
+Runnable elfLoaderRunSetup(Elf *elf, ProtectedMemory *memory)
+{
+	Runnable run;
+	int64_t r;
+
+	if(elf == NULL || memory == NULL)
+	{
+		debugPrint("%s: Elf (%p)  or memory (%p) NULL\n", __func__, elf, memory);
+		return NULL;
+	}
+
+	// FIXME: depricate for 3 method calls
+	debugPrint("%s: elfLoaderLoad(%p, %p, %p) -> ", __func__, (void *)elf, protectedMemoryGetWritable(memory), protectedMemoryGetExecutable(memory));
+	if((r = elfLoaderLoad(elf, protectedMemoryGetWritable(memory), protectedMemoryGetExecutable(memory))) < 0)
+	{
+		debugPrint("Elf could not be loaded - %"PRIx64"\n", r);
+		run = NULL;
+	}
+	else
+	{
+		debugPrint("%"PRId64"\n", r);
+		run = (Runnable)((uint8_t *)protectedMemoryGetExecutable(memory) + elfEntry(elf));
+	}
+
+	debugPrint("%s: elfDestroyAndFree(%p)\n", __func__, (void *)elf);
+	elfDestroyAndFree(elf); // we don't need the "file" anymore
+
+	return run;
+}
+
+void elfLoaderRunSync(Elf *elf)
+{
+	ProtectedMemory *memory;
+	Runnable run;
+	int64_t r;
+
+	char *elfName = "elf";
+	char *elfArgv[2] = { elfName, NULL };
+	int elfArgc = sizeof(elfArgv) / sizeof(elfArgv[0]) - 1;
+
+	if(elf == NULL)
+	{
+		debugPrint("%s: Elf is NULL", __func__);
+		return;
+	}
+
+	memory = elfLoaderMemoryCreate(elf);
+	protectedMemoryDebugPrint(memory);
+
+	run = elfLoaderRunSetup(elf, memory);
+	if(run != NULL)
+	{
+		debugPrint("%s: run(%i, {\"%s\", NULL}) [%p + elfEntry = %p] -> ", __func__, elfArgc, elfArgv[0], protectedMemoryGetExecutable(memory), (void *)run);
+		r = run(elfArgc, elfArgv);
+		debugPrint("%"PRId64" = %"PRIu64" = 0x%"PRIx64"\n", r,  r, r);
+	}
+
+	elfLoaderMemoryDestroy(memory);
+}
+
+void *elfLoaderRunAsyncMain(void *mainAndMemory)
+{
+	MainAndMemory *mm;
+	int r;
+
+	char *elfName = "elf";
+	char *elfArgv[2] = { elfName, NULL };
+	int elfArgc = sizeof(elfArgv) / sizeof(elfArgv[0]) - 1;
+
+	if(mainAndMemory == NULL)
+		return NULL;
+
+	mm = (MainAndMemory *)mainAndMemory;
+	r = mm->main(elfArgc, elfArgv);
+	//debugPrint("%"PRId64" = %"PRIu64" = 0x%"PRIx64"\n", r,  r, r);
+	elfLoaderMemoryDestroySilent(mm->memory);
+	free(mm);
+
+	return NULL;
+}
+
+void elfLoaderRunAsync(Elf *elf)
+{
+	pthread_t thread;
+	MainAndMemory *mm;
+
+	if(elf == NULL)
+	{
+		debugPrint("%s: Elf is NULL", __func__);
+		return;
+	}
+
+ 	mm = (MainAndMemory *)malloc(sizeof(MainAndMemory));
+	mm->memory = elfLoaderMemoryCreate(elf);
+	protectedMemoryDebugPrint(mm->memory);
+	mm->main = elfLoaderRunSetup(elf, mm->memory);
+
+	if(mm->main != NULL)
+	{
+		debugPrint("%s: run [%p + elfEntry = %p]\n", __func__, protectedMemoryGetExecutable(mm->memory), (void *)mm->main);
+		pthread_create(&thread, NULL, elfLoaderRunAsyncMain, mm);
+	}
+	else
+	{
+		elfLoaderMemoryDestroy(mm->memory);
+		free(mm);
+	}
+}
+
 #ifdef BinaryLoader
 int elfLoaderMain(int argc, char **argv)
 #else
 int main(int argc, char **argv)
 #endif
 {
-	int elfInputMode, memoryMode, debugMode;
-	FILE *debug;
-
-	int server, client; // only used in ElfInputModeServer
-	int argvFile; // only used in ElfInputModeFile
+	int server; // only used in ElfInputServer
+	int argvFile; // only used in ElfInputFile
 	Elf *elf;
-	uint64_t size, alignment;
-	ProtectedMemory *memory;
-	Runnable run;
-	int64_t ret;
 
-	elfInputMode = ElfInputModeFile;
-	memoryMode = MemoryModeEmulate;
-	debugMode = DebugModeOff;
+	elfInputMode = ElfInputFile;
+	memoryMode = MemoryEmulate;
+	debugMode = DebugOff;
+	threadingMode = ThreadingNone;
 
 	#ifdef ElfLoaderServer
-		elfInputMode = ElfInputModeServer;
+		elfInputMode = ElfInputServer;
 	#endif
 
 	#ifdef ElfLoaderEmulatePS4Memory
-		memoryMode = MemoryModeEmulate;
+		memoryMode = MemoryEmulate;
 	#endif
 
 	#ifdef Debug
-		debugMode = DebugModeOn;
+		debugMode = DebugOn;
+	#endif
+
+	#ifdef ElfLoaderThreading
+		threadingMode = Threading;
 	#endif
 
 	#ifdef __PS4__
-		elfInputMode = ElfInputModeServer;
-		memoryMode = MemoryModePlain;
+		elfInputMode = ElfInputServer;
+		memoryMode = MemoryPlain;
 		argvFile = 0; // dummy to supress warning
 	#else
-		argvFile = getLoaderArguments(argc, argv, &memoryMode, &elfInputMode, &debugMode);
-		if(elfInputMode == ElfInputModeFile && argvFile == 0)
-			return EXIT_FAILURE; // no file provided in file mode
+		argvFile = getLoaderArguments(argc, argv, &memoryMode, &elfInputMode, &threadingMode, &debugMode);
+		if(elfInputMode == ElfInputFile)
+		{
+	 		if(argvFile == 0)
+			{
+				fprintf(stderr, "No file provided as argument in file mode.\n");
+				return EXIT_FAILURE;
+			}
+			threadingMode = ThreadingNone;
+		}
 	#endif
 
 	signal(SIGPIPE, SIG_IGN);
 
-	/* Get Elf from somewhere */
-
-	if(elfInputMode == ElfInputModeServer)
+	if(debugMode == DebugOn)
 	{
-		debug = (FILE *)NULL;
-		if(debugMode)
+		if(elfInputMode == ElfInputServer)
 		{
-			if((debug = utilPrintServer(DebugPort)) == NULL)
+			if(!debugOpen(utilPrintServer(DebugPort)))
 				return EXIT_FAILURE;
-			debugPrint(debug, "utilPrintServer(%i) -> %p\n", DebugPort, (void *)debug);
+			debugPrint("%s: debugOpen(utilPrintServer(%i))\n", __func__, DebugPort);
 		}
-
-		debugPrint(debug, "Mode -> ElfLoader (%i, %i)\n", elfInputMode, memoryMode);
-
-		debugPrint(debug, "utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
-		if((server = utilServerCreate(ServerPort, ServerRetry, ServerTimeout, ServerBacklog)) < 0)
+		else
 		{
-			debugPrint(debug, "Server creation failed %i", server);
-			return EXIT_FAILURE;
-		}
-		debugPrint(debug, "%i\n", server);
-
-		debugPrint(debug, "accept(%i, NULL, NULL) -> ", server);
-		if((client = accept(server, NULL, NULL)) < 0)
-		{
-			close(server);
-			debugPrint(debug, "Accept failed %i", client);
-			return EXIT_FAILURE;
-		}
-		debugPrint(debug, "%i\n", client);
-
-		debugPrint(debug, "elfCreateFromSocket(%i) -> ", client);
-		elf = elfCreateFromSocket(client);
-		debugPrint(debug, "%p\n", (void *)elf);
-
-		close(client);
-		close(server);
-
-		if(elf == NULL)
-		{
-			debugPrint(debug, "File doesn't seem to be an ELF\n");
-			debugClose(debug);
-			return EXIT_FAILURE;
-		}
-	}
-	else // if(elfInputMode == ElfInputModeFile)
-	{
-		debug = (FILE *)NULL;
-		if(debugMode)
-		{
-			if((debug = fddupopen(STDERR_FILENO, "wb")) == NULL)
+			if(!debugOpen(fddupopen(STDERR_FILENO, "wb")))
 				return EXIT_FAILURE;
-			debugPrint(debug, "fddupopen(STDERR_FILENO, \"wb\") -> %p\n", (void *)debug);
+			debugPrint("%s: debugOpen(fddupopen(STDERR_FILENO, \"wb\"))\n", __func__);
 		}
 
-		debugPrint(debug, "Mode -> ElfLoader (%i, %i)\n", elfInputMode, memoryMode);
+		debugPrint("%s: Mode -> ElfLoader [input: %i, memory: %i, thread: %i, debug: %i]\n",
+			__func__, elfInputMode, memoryMode, threadingMode, debugMode);
+	}
 
-		if(argc < 1)
+	if(elfInputMode == ElfInputServer)
+	{
+		server = elfLoaderServerCreate();
+		if(threadingMode == Threading)
 		{
-			debugPrint(debug, "%s <ELF file>\n", argv[0]);
-			debugClose(debug);
-			return EXIT_FAILURE;
+			for(;;)
+			{
+				elf = elfLoaderServerAcceptElf(server);
+ 				if(elf == NULL) // to stop, send a non-elf file - cheesy I know
+					break;
+				elfLoaderRunAsync(elf);
+			}
 		}
-
-		debugPrint(debug, "elfCreateFromFile(%s) -> ", argv[argvFile]);
-		if((elf = elfCreateFromFile(argv[argvFile])) == NULL)
+		else
 		{
-			debugPrint(debug, "File doesn't seem to be an ELF\n");
-			debugClose(debug);
-			return EXIT_FAILURE;
+			elf = elfLoaderServerAcceptElf(server);
+			elfLoaderRunSync(elf);
 		}
-		debugPrint(debug, "%p\n", (void *)elf);
+		elfLoaderServerDestroy(server);
 	}
-
-	/* Got Elf here, Get Memory, Load, Run, ..., Free */
-
-	size = elfMemorySize(elf);
-	alignment = elfLargestAlignment(elf);
-
-	debugPrint(debug, "protectedMemoryCreate(%"PRIu64", %"PRIu64") -> ", size, alignment);
-
-	if(memoryMode == MemoryModeEmulate)
-		memory = protectedMemoryCreateEmulation(size, alignment);
-	else
-		memory = protectedMemoryCreate(size, alignment);
-
-	if(memory == NULL)
+	else // if(elfInputMode == ElfInputFile)
 	{
-		debugPrint(debug, "Memory Setup failed\n");
-		protectedMemoryDebugPrint(debug, memory);
-		debugClose(debug);
-		return EXIT_FAILURE;
+		elf = elfLoaderCreateElfFromPath(argv[argvFile]);
+		elfLoaderRunSync(elf);
 	}
-	debugPrint(debug, "%p\n", (void *)memory);
 
-	// FIXME: depricate for 3 method calls
-	debugPrint(debug, "elfLoaderLoad(%p, %p, %p) -> ", (void *)elf, protectedMemoryGetWritable(memory), protectedMemoryGetExecutable(memory));
-	if((ret = elfLoaderLoad(elf, protectedMemoryGetWritable(memory), protectedMemoryGetExecutable(memory))) < 0)
-	{
-		debugPrint(debug, "Elf could not be loaded (%"PRIx64")\n", ret);
-		protectedMemoryDebugPrint(debug, memory);
-		debugClose(debug);
-		return EXIT_FAILURE;
-	}
-	debugPrint(debug, "%"PRId64"\n", ret);
-
-	protectedMemoryDebugPrint(debug, memory);
-
-	run = (Runnable)((uint8_t *)protectedMemoryGetExecutable(memory) + elfEntry(elf));
-	debugPrint(debug, "run() [%p + 0x%"PRIx64" = %p] -> ", protectedMemoryGetExecutable(memory), elfEntry(elf), (void *)run);
-	ret = run(0, NULL); //1, (char **)&(char *){ "elf" }
-	debugPrint(debug, "%"PRId64" = %"PRIu64" = 0x%"PRIx64"\n", ret,  ret, ret);
-
-	debugPrint(debug, "protectedMemoryDestroy(%p) -> ", (void *)memory);
-	if(memoryMode == MemoryModeEmulate)
-		ret = protectedMemoryDestroyEmulated(memory);
-	else
-		ret = protectedMemoryDestroy(memory);
-
-	if(ret < 0)
-	{
-		protectedMemoryDebugPrint(debug, memory);
-		debugPrint(debug, "Memory could not be completely freed (%"PRIx64")\n", ret);
-	}
-	debugPrint(debug, "%"PRId64"\n", ret);
-
-	debugPrint(debug, "elfDestroyAndFree(%p)\n", (void *)elf);
-	elfDestroyAndFree(elf);
-
-	debugPrint(debug, "debugClose(%p)\n", (void *)debug);
-	debugClose(debug);
+	debugPrint("%s: debugClose()\n", __func__);
+	debugClose();
 
 	return EXIT_SUCCESS;
 }

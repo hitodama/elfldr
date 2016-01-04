@@ -33,8 +33,12 @@ ifeq ($(memory), emulate)
 	CompilerFlags += -DElfLoaderEmulatePS4Memory
 endif
 
+ifeq ($(threading), true)
+	CompilerFlags += -DElfLoaderThreading
+endif
+
 ifeq ($(target), x86-64)
-	Libraries += -lrt
+	Libraries += -lrt -lpthread
 endif
 
 ###################################
