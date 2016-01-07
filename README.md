@@ -30,6 +30,7 @@ Options:
 	target=ps4-bin		// (default) build as bin for the PS4
 		keepelf=true	// keeps elf before converting it to bin (for debug purposes)
 	threading=true		// sets loader default to run elfs threaded (ignored in file mode)
+	stdio=wait|lazy|none // sets default std io redirect mode (lazy is a "may" option), can be combined with debug
 	(ldr=bin			// build loader to accept binaries instead of elfs - best not used)
 ```
 ###Commandline (x86-64) Arguments
@@ -40,8 +41,11 @@ Options:
 --server					// use server (5053) input, and debug (5052) if enabled
 --debug						// enable debug mode
 --no-debug					// disable debug mode
---threading					// enable threading mode (multiple elfs can be executed async - to close the server, send a non-elf - this mode does not print return codes)
+--threading					// enable threading mode (multiple elfs can be executed async - to close the server, send a non-elf - this prints return codes out of order)
 --no-threading				// disable threading mode (only one elf runs blocking)
+--stdio-none				// disables stdio redirect, overwritten by debug
+--stdio-wait				// enables stdio redirect, connection must be made prior to running code
+--stdio-lazy				// enables stdio redirect, connection can be made later, output will be lost
 ```
 ###Examples
 ####Local

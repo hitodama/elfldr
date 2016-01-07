@@ -86,13 +86,6 @@
 				var chain = new rop();
 
 				var size = 0x100000;
-				/*
-					text (w)
-					text (e)
-					data (d1)
-					Payload text (d2) -> copy to text
-					Payload data (d3) -> copy data
-				*/
 				var writeAddress = 0x926100000;
 				var execAddress = 0x926200000;
 				var dataAddress = 0x926300000;
@@ -181,6 +174,13 @@
 						}, 100);
 						break;
 					case 6:
+						/*
+							- text (w)
+							- text (e)
+							- data (d1)
+							- Payload text (d2) -> copy to text (w)
+							- Payload data (d3) -> copy data (d1)
+						*/
 						if(debug > 0)
 							document.body.innerHTML += 'Binary loader (stage 6)!<br>'
 						setTimeout(function()

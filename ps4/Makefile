@@ -17,6 +17,13 @@ ldrgen ?= true
 
 TargetFile := ldr
 
+ifeq ($(target), ps4-lib)
+	TargetFile := elfloader
+	SourceFilesCForce := source/elfloader.c
+	Libraries := -lps4
+	ldrgen := false
+endif
+
 include $(LibPS4)/make/libps4.mk
 
 ###################################
@@ -35,6 +42,16 @@ endif
 
 ifeq ($(threading), true)
 	CompilerFlags += -DElfLoaderThreading
+endif
+
+ifeq ($(stdio), none)
+	CompilerFlags += -DElfLoaderStandardIORedirectNone
+endif
+ifeq ($(stdio), lazy)
+	CompilerFlags += -DElfLoaderStandardIORedirectLazy
+endif
+ifeq ($(stdio), wait)
+	CompilerFlags += -DElfLoaderStandardIORedirectWait
 endif
 
 ifeq ($(target), x86-64)
@@ -61,13 +78,17 @@ CompilerFlags += -DPayload=$(Payload)
 
 ###################################
 
+$(OutPath)/$(TargetFile).a: $(ObjectFiles)
+	$(dirp)
+	$(archive)
+
 .PHONY:: ldrgen
 
 $(OutPath)/ldrgen: ldrgen/main.c source/util.c
-	$(dirp)
-	$(compileAndLinkLdrGen)
 ifeq ($(target), ps4-bin)
 ifneq ($(ldrgen), false)
+	$(dirp)
+	$(compileAndLinkLdrGen)
 ifeq ($(ldr), elf)
 	$(OutPath)/ldrgen Elf $(OutPath)/ldr ../local/ldr/ldr.js
 else

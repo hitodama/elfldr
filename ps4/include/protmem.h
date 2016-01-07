@@ -1,15 +1,14 @@
 #ifndef ProtMem_H
 #define ProtMem_H
 
-#include "elfloader.h"
-
 typedef struct ProtectedMemory ProtectedMemory;
 
-void *protectedMemoryGetWritable(ProtectedMemory *memory);
-void *protectedMemoryGetExecutable(ProtectedMemory *memory);
+void *protectedMemoryWritable(ProtectedMemory *memory);
+void *protectedMemoryExecutable(ProtectedMemory *memory);
+size_t protectedMemorySize(ProtectedMemory *memory);
 
-ProtectedMemory *protectedMemoryCreate(uint64_t size, uint64_t alignment);
-ProtectedMemory *protectedMemoryCreateEmulation(uint64_t size, uint64_t alignment);
+ProtectedMemory *protectedMemoryCreate(size_t size);
+ProtectedMemory *protectedMemoryCreateEmulation(size_t size);
 int protectedMemoryDestroy(ProtectedMemory *memory);
 int protectedMemoryDestroyEmulation(ProtectedMemory *memory);
 

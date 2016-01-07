@@ -36,7 +36,7 @@
 /* Neat Types */
 
 typedef __ElfN(Ehdr) ElfHeader;
-typedef __ElfN(Phdr) ElfProgram;
+typedef __ElfN(Phdr) ElfSegment;
 typedef __ElfN(Shdr) ElfSection;
 typedef __ElfN(Sym) ElfSymbol;
 //typedef Elf_Rel ElfRelocation;
@@ -48,6 +48,20 @@ typedef __ElfN(Dyn) ElfDynamic;
 typedef struct Elf Elf;
 
 /* Enums*/
+
+typedef enum
+{
+	ElfLoaderReturnOK = 0,
+	ElfLoaderReturnElfNull = -1,
+	ElfLoaderReturnWritableMemoryNull = -2,
+	ElfLoaderReturnExecutableMemoryNull = -3,
+	ElfLoaderReturnNoElf = -4,
+	ElfLoaderReturnUnknownRelocation = -5,
+	ElfLoaderReturnAddressNotFound = -6,
+	ElfLoaderReturnNoSectionsOrSegments = -7,
+	ElfLoaderReturnIsNotLoadable = -8
+}
+ElfLoaderReturn;
 
 typedef enum
 {
@@ -67,17 +81,17 @@ ElfSectionAttribute;
 
 typedef enum
 {
-	ElfProgramAttributeNone = 0,
-	ElfProgramAttributeType,
-	ElfProgramAttributeFlags,
-	ElfProgramAttributeOffset,
-	ElfProgramAttributeVirtualAddress,
-	ElfProgramAttributePhysicalAddress,
-	ElfProgramAttributeFileSize,
-	ElfProgramAttributeMemorySize,
-	ElfProgramAttributeAlignment,
+	ElfSegmentAttributeNone = 0,
+	ElfSegmentAttributeType,
+	ElfSegmentAttributeFlags,
+	ElfSegmentAttributeOffset,
+	ElfSegmentAttributeVirtualAddress,
+	ElfSegmentAttributePhysicalAddress,
+	ElfSegmentAttributeFileSize,
+	ElfSegmentAttributeMemorySize,
+	ElfSegmentAttributeAlignment,
 }
-ElfProgramAttribute;
+ElfSegmentAttribute;
 
 typedef enum
 {
@@ -135,9 +149,9 @@ uint64_t elfSectionAttribute(ElfSection *elfSection, ElfSectionAttribute attribu
 ElfSection *elfSections(Elf *elf, uint16_t *size, uint16_t *length);
 ElfSection *elfSection(Elf *elf, uint16_t *index, ElfSectionAttribute attribute, uint64_t value);
 
-uint64_t elfProgramAttribute(ElfProgram *elfProgram, ElfProgramAttribute attribute);
-ElfProgram *elfPrograms(Elf *elf, uint16_t *size, uint16_t *length);
-ElfProgram *elfProgram(Elf *elf, uint16_t *index, ElfProgramAttribute attribute, uint64_t value);
+uint64_t elfSegmentAttribute(ElfSegment *elfSegment, ElfSegmentAttribute attribute);
+ElfSegment *elfSegments(Elf *elf, uint16_t *size, uint16_t *length);
+ElfSegment *elfSegment(Elf *elf, uint16_t *index, ElfSegmentAttribute attribute, uint64_t value);
 
 /* dynamic (if exists) */
 
@@ -179,8 +193,7 @@ void elfDestroyAndFree(Elf *elf);
 
 /* --- loader --- */
 
-uint8_t elfLoaderIsLoadable(Elf *elf);
-
+int elfLoaderIsLoadable(Elf *elf);
 int elfLoaderInstantiate(Elf *elf, void *memory);
 int elfLoaderRelocate(Elf *elf, void *writable, void *executable);
 int elfLoaderLoad(Elf *elf, void *writable, void *executable);

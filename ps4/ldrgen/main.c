@@ -1,4 +1,10 @@
-#include "common.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <fcntl.h>
+
 #include "util.h"
 
 enum{ BinarySegmentSize = 0x100000 };
@@ -7,7 +13,7 @@ int main(int argc, char **argv)
 {
 	uint32_t *bin, *text, *data;
 	off_t binSize, textSize, dataSize;
-	uint64_t s;
+	size_t s;
 	FILE *f;
 	int i;
 

@@ -1,13 +1,14 @@
 #ifndef Util_H
 #define Util_H
 
-#include <stdint.h>
+void utilStandardIORedirect(int to, int stdfd[3], fpos_t stdpos[3]);
+void utilStandardIOReset(int stdfd[3], fpos_t stdpos[3]);
 
-FILE *fddupopen(int fd, const char *mode);
 int utilServerCreate(uint16_t port, int backlog, int try, unsigned int sec);
-FILE *utilPrintServer(int port);
-void *utilAllocUnsizeableFileFromDescriptor(int fd, uint64_t *size);
-void *utilAllocFileAligned(char *file, uint64_t *size, uint64_t alignment);
+int utilSingleAcceptServer(int port);
+
+void *utilAllocUnsizeableFileFromDescriptor(int fd, size_t *size);
+void *utilAllocFileAligned(char *file, size_t *size, size_t alignment);
 #define utilAllocFile(file, size) utilAllocFileAligned(file, size, 1)
 
 #endif

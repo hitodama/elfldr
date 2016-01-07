@@ -1,7 +1,15 @@
-#include "common.h"
+#define _XOPEN_SOURCE 700
+#define __BSD_VISIBLE 1
+#define _DEFAULT_SOURCE 1
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+
 #include "protmem.h"
-#include "util.h"
-#include "debug.h"
 
 #ifdef __PS4__
 	#include <kernel.h>
@@ -15,95 +23,74 @@ typedef struct ProtectedMemory
 {
 	void *writable;
 	void *executable;
-	void *writableAligned;
-	void *executableAligned;
 	int writableHandle;
 	int executableHandle;
-
-	uint64_t size;
-	uint64_t alignment;
-	long pageSize;
-	uint64_t alignedSize;
+	size_t size;
 }
 ProtectedMemory;
 
-void *protectedMemoryAlign(void *mem, unsigned long alignment)
-{
-	return (void *)((uintptr_t)((uint8_t *)mem + alignment + sizeof(void *)) & ~(alignment - 1));
-}
-
-//FIXME: MANY MORE ERROR STATES, oh so many more ... Oo
-
-void protectedMemorySetCommon(ProtectedMemory *memory, uint64_t size, uint64_t alignment)
-{
-	memory->size = size;
-	memory->alignment = alignment;
-	memory->pageSize = sysconf(_SC_PAGESIZE);
-	memory->alignedSize = ((memory->size + memory->alignment) / memory->pageSize + 1) * memory->pageSize;
-}
-
-ProtectedMemory *protectedMemoryCreateEmulation(uint64_t size, uint64_t alignment)
+ProtectedMemory *protectedMemoryAllocate(size_t size)
 {
 	ProtectedMemory *memory;
+	size_t pageSize;
 
-	memory = (ProtectedMemory *)calloc(1, sizeof(ProtectedMemory));
-	protectedMemorySetCommon(memory, size, alignment);
+	memory = (ProtectedMemory *)malloc(sizeof(ProtectedMemory));
+	pageSize = sysconf(_SC_PAGESIZE);
+	memory->size = (size / pageSize + 1) * pageSize;
+
+	return memory;
+}
+
+ProtectedMemory *protectedMemoryCreateEmulation(size_t size)
+{
+	ProtectedMemory *memory = protectedMemoryAllocate(size);
 
 	//int memoryFile = open("/dev/zero", O_RDWR);
 	memory->executableHandle = shm_open("/elfloader", O_CREAT|O_TRUNC|O_RDWR, 0755);
-	ftruncate(memory->executableHandle, memory->alignedSize);
+	ftruncate(memory->executableHandle, memory->size);
 	memory->writableHandle = memory->executableHandle;
-	memory->executable = mmap(NULL, memory->alignedSize, PROT_READ | PROT_EXEC, MAP_FILE | MAP_SHARED, memory->executableHandle, 0);
-	memory->writable = mmap(NULL, memory->alignedSize, PROT_READ | PROT_WRITE, MAP_FILE | MAP_SHARED, memory->writableHandle, 0);
-	memory->executableAligned = protectedMemoryAlign(memory->executable, memory->alignment);
-	memory->writableAligned = (void *)((uintptr_t)memory->writable + ((uintptr_t)memory->executableAligned - (uintptr_t)memory->executable));
+	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_FILE | MAP_SHARED, memory->executableHandle, 0);
+	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_FILE | MAP_SHARED, memory->writableHandle, 0);
 
 	return memory;
 }
 
 #ifdef __PS4__
-ProtectedMemory *protectedMemoryCreatePS4(uint64_t size, uint64_t alignment)
+ProtectedMemory *protectedMemoryCreatePS4(size_t size)
 {
-	ProtectedMemory *memory;
+	ProtectedMemory *memory = protectedMemoryAllocate(size);
 
-	memory = (ProtectedMemory *)calloc(1, sizeof(ProtectedMemory));
-	protectedMemorySetCommon(memory, size, alignment);
-
-	sceKernelJitCreateSharedMemory(0, memory->alignedSize, PROT_READ | PROT_WRITE | PROT_EXEC, &memory->executableHandle);
+	sceKernelJitCreateSharedMemory(0, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC, &memory->executableHandle);
 	sceKernelJitCreateAliasOfSharedMemory(memory->executableHandle, PROT_READ | PROT_WRITE, &memory->writableHandle);
 	//sceKernelJitMapSharedMemory(memory->writableHandle, PROT_CPU_READ | PROT_CPU_WRITE, &writable);
-	memory->executable = mmap(NULL, memory->alignedSize, PROT_READ | PROT_EXEC, MAP_SHARED, memory->executableHandle, 0);
-	memory->writable = mmap(NULL, memory->alignedSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_TYPE, memory->writableHandle, 0);
-	memory->executableAligned = protectedMemoryAlign(memory->executable, memory->alignment);
-	memory->writableAligned = (void *)((uintptr_t)memory->writable + ((uintptr_t)memory->executableAligned - (uintptr_t)memory->executable));
+	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_SHARED, memory->executableHandle, 0);
+	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_TYPE, memory->writableHandle, 0);
 
 	return memory;
 }
 #endif
 
-ProtectedMemory *protectedMemoryCreatePlain(uint64_t size, uint64_t alignment)
+ProtectedMemory *protectedMemoryCreatePlain(size_t size)
 {
-	ProtectedMemory *memory;
+	ProtectedMemory *memory = protectedMemoryAllocate(size);
+	size_t pageSize = sysconf(_SC_PAGESIZE);
 
-	memory = (ProtectedMemory *)calloc(1, sizeof(ProtectedMemory));
-	protectedMemorySetCommon(memory, size, alignment);
-
-	//if(!(memory->writableAligned = aligned_alloc(memory->alignment, memory->size)))
-	if(posix_memalign(&memory->writableAligned, memory->alignment, memory->size))
+	//if(!(memory->writable = aligned_alloc(memory->alignment, memory->size)))
+	if(posix_memalign(&memory->writable, pageSize, memory->size))
 		return NULL;
-	if(mprotect(memory->writableAligned, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC))
+	if(mprotect(memory->writable, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC))
 		return NULL;
-	memory->executableAligned = memory->writableAligned;
+	memory->executable = memory->writable;
 
 	return memory;
 }
 
-ProtectedMemory *protectedMemoryCreate(uint64_t size, uint64_t alignment)
+ProtectedMemory *protectedMemoryCreate(size_t size)
 {
 	#ifdef __PS4__
-		return protectedMemoryCreatePS4(size, alignment);
+		return protectedMemoryCreatePS4(size);
 	#else
-		return protectedMemoryCreatePlain(size, alignment);
+		return protectedMemoryCreatePlain(size);
 	#endif
 }
 
@@ -111,8 +98,8 @@ ProtectedMemory *protectedMemoryCreate(uint64_t size, uint64_t alignment)
 int protectedMemoryDestroyPS4(ProtectedMemory *memory)
 {
 	int r = 0;
-	r |= munmap(memory->writable, memory->alignedSize);
-	r |= munmap(memory->executable, memory->alignedSize);
+	r |= munmap(memory->writable, memory->size);
+	r |= munmap(memory->executable, memory->size);
 	if(close(memory->writableHandle) == EOF)
 		r = -1;
 	if(close(memory->executableHandle) == EOF)
@@ -124,8 +111,8 @@ int protectedMemoryDestroyPS4(ProtectedMemory *memory)
 int protectedMemoryDestroyEmulation(ProtectedMemory *memory)
 {
 	int r = 0;
-	r |= munmap(memory->writable, memory->alignedSize);
-	r |= munmap(memory->executable, memory->alignedSize);
+	r |= munmap(memory->writable, memory->size);
+	r |= munmap(memory->executable, memory->size);
 	r |= shm_unlink("/elfloader");
 	//close(memoryFile);
 	return r;
@@ -133,7 +120,7 @@ int protectedMemoryDestroyEmulation(ProtectedMemory *memory)
 
 int protectedMemoryDestroyPlain(ProtectedMemory *memory)
 {
-	free(memory->writableAligned);
+	free(memory->writable);
 	return 0;
 }
 
@@ -149,32 +136,17 @@ int protectedMemoryDestroy(ProtectedMemory *memory)
 	return r;
 }
 
-void *protectedMemoryGetWritable(ProtectedMemory *memory)
+void *protectedMemoryWritable(ProtectedMemory *memory)
 {
-	return memory->writableAligned;
+	return memory->writable;
 }
 
-void *protectedMemoryGetExecutable(ProtectedMemory *memory)
+void *protectedMemoryExecutable(ProtectedMemory *memory)
 {
-	return memory->executableAligned;
+	return memory->executable;
 }
 
-void protectedMemoryDebugPrint(ProtectedMemory *memory)
+size_t protectedMemorySize(ProtectedMemory *memory)
 {
-	if(memory == NULL)
-		return;
-
-	debugPrint("struct ProtectedMemory [%p]\n{\n", (void *)memory);
-	debugPrint("\twritable -> %p\n", memory->writable);
-	debugPrint("\texecutable -> %p\n", memory->executable);
-	debugPrint("\twritableAligned -> %p\n", memory->writableAligned);
-	debugPrint("\texecutableAligned -> %p\n", memory->executableAligned);
-	debugPrint("\twritableHandle -> %i\n", memory->writableHandle);
-	debugPrint("\texecutableHandle -> %i\n", memory->executableHandle);
-
-	debugPrint("\tsize -> %"PRIu64" = 0x%"PRIx64"\n", memory->size, memory->size);
-	debugPrint("\talignment -> %"PRIu64" = 0x%"PRIx64"\n", memory->alignment, memory->alignment);
-	debugPrint("\tpageSize -> %ld = 0x%lX\n", memory->pageSize, memory->pageSize);
-	debugPrint("\talignedSize -> %"PRIu64" = 0x%"PRIx64"\n", memory->alignedSize, memory->alignedSize);
-	debugPrint("}\n");
+	return memory->size;
 }

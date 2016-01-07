@@ -1,20 +1,18 @@
 #ifndef Debug_H
 #define Debug_H
 
-enum{ DebugPort = 5052 };
+#include <stdarg.h>
 
-#if defined(Debug) || defined(DEBUG)
+void debugEnable();
+void debugDisable();
+int debugPrint_(const char *format, ...);
 
-int debugOpen(FILE *file);
-int debugPrint(const char *format, ...);
-int debugClose();
-
-#else
-
-#define debugOpen(...) 1
-#define debugPrint(...) 1
-#define debugClose(...) 0
-
-#endif
+#define debugPrint(...) \
+	do \
+	{ \
+		debugPrint_("[%s|%d]: ", __func__, __LINE__); \
+		debugPrint_(__VA_ARGS__); \
+	} \
+	while(0)
 
 #endif

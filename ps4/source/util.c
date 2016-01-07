@@ -1,5 +1,65 @@
-#include "common.h"
+#define _XOPEN_SOURCE 700
+#define __BSD_VISIBLE 1
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+
+#include <netinet/in.h>
+
 #include "util.h"
+
+void utilStandardIORedirect(int to, int stdfd[3], fpos_t stdpos[3])
+{
+	int stdid[3] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+	FILE *stdf[3] = {stdin, stdout, stderr};
+	int i;
+
+	if(stdfd == NULL || stdpos == NULL)
+		return;
+
+	for(i = 0; i < 3; ++i)
+	{
+		fflush(stdf[i]);
+		fgetpos(stdf[i], &stdpos[i]);
+
+		stdfd[i] = dup(stdid[i]);
+		close(stdid[i]);
+		dup(to);
+
+		clearerr(stdf[i]);
+		setbuf(stdf[i], NULL);
+	}
+}
+
+void utilStandardIOReset(int stdfd[3], fpos_t stdpos[3])
+{
+	int stdid[3] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+	FILE *stdf[3] = {stdin, stdout, stderr};
+	int i;
+
+	if(stdfd == NULL || stdpos == NULL)
+		return;
+
+	for(i = 0; i < 3; ++i)
+	{
+		fflush(stdf[i]);
+
+		close(stdid[i]);
+		dup(stdfd[i]);
+		close(stdfd[i]);
+
+		fsetpos(stdf[i], &stdpos[i]);
+		clearerr(stdf[i]);
+	}
+}
 
 FILE *fddupopen(int fd, const char *mode)
 {
@@ -60,35 +120,22 @@ int utilServerCreate(uint16_t port, int backlog, int try, unsigned int sec)
 	return server;
 }
 
-FILE *utilPrintServer(int port)
+int utilSingleAcceptServer(int port)
 {
 	int server, client;
-	FILE *out;
-
 	if((server = utilServerCreate(port, 1, 20, 1)) < 0)
-		return NULL;
-
-	if((client = accept(server, NULL, NULL)) < 0)
-	{
-		close(server);
-		return NULL;
-	}
-
+		return server;
+	client = accept(server, NULL, NULL); // either return is fine
 	close(server);
-	out = fddupopen(client, "wb");
-	close(client);
-	//setvbuf(in, NULL, _IOLBF, 0);
-	setvbuf(out, NULL, _IONBF, 0);
-
-	return out;
+	return client;
 }
 
-void *utilAllocUnsizeableFileFromDescriptor(int fd, uint64_t *size)
+void *utilAllocUnsizeableFileFromDescriptor(int fd, size_t *size)
 {
 	int length = 0;
 	int full = 4096;
 	uint8_t *data = (void *)malloc(full);
-	uint64_t s = 0;
+	size_t s = 0;
 
 	if(size != NULL)
 		*size = 0;
@@ -113,13 +160,13 @@ void *utilAllocUnsizeableFileFromDescriptor(int fd, uint64_t *size)
 	return data;
 }
 
-void *utilAllocFileAligned(char *file, uint64_t *size, uint64_t alignment)
+void *utilAllocFileAligned(char *file, size_t *size, size_t alignment)
 {
 	struct stat s;
 	FILE *f;
 	uint32_t *b;
-	uint64_t sz;
-	uint64_t i;
+	size_t sz;
+	size_t i;
 
 	if(size != NULL)
 		*size = 0;
@@ -127,7 +174,10 @@ void *utilAllocFileAligned(char *file, uint64_t *size, uint64_t alignment)
 	if(stat(file, &s) < 0)
 		return NULL;
 
- 	sz = ((uint64_t)s.st_size * alignment) / alignment;
+	if(alignment == 0)
+		alignment = 1;
+
+ 	sz = ((size_t)s.st_size * alignment) / alignment;
 	b = (uint32_t *)malloc(sz * sizeof(uint8_t));
 
 	if(b == NULL)
