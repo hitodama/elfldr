@@ -1,6 +1,6 @@
-#include "common.h"
-#include "util.h"
+#include <stdarg.h>
 
+#include "util.h"
 #include "debug.h"
 
 static int debugIsEnabled;

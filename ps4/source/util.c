@@ -78,7 +78,7 @@ FILE *fddupopen(int fd, const char *mode)
 	return r;
 }
 
-int utilServerCreate(uint16_t port, int backlog, int try, unsigned int sec)
+int utilServerCreate(int port, int backlog, int try, unsigned int sec)
 {
 	int server;
 	struct sockaddr_in serverAddress;
