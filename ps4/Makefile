@@ -56,6 +56,7 @@ endif
 
 ifeq ($(target), x86-64)
 	Libraries += -lrt -lpthread
+	CompilerFlags += -D_GNU_SOURCE
 endif
 
 ###################################
