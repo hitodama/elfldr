@@ -22,21 +22,25 @@ void utilStandardIORedirect(int to, int stdfd[3], fpos_t stdpos[3])
 	FILE *stdf[3] = {stdin, stdout, stderr};
 	int i;
 
-	if(stdfd == NULL || stdpos == NULL)
-		return;
-
 	for(i = 0; i < 3; ++i)
 	{
 		fflush(stdf[i]);
-		fgetpos(stdf[i], &stdpos[i]);
 
-		stdfd[i] = dup(stdid[i]);
+		if(stdpos != NULL)
+			fgetpos(stdf[i], &stdpos[i]);
+
+		if(stdfd != NULL)
+			stdfd[i] = dup(stdid[i]);
 		close(stdid[i]);
 		dup(to);
 
 		clearerr(stdf[i]);
-		setbuf(stdf[i], NULL);
+		//setbuf(stdf[i], NULL);
 	}
+
+	//setvbuf(stdin, NULL, _IOLBF, 0);
+	//setvbuf(stdout, NULL, _IONBF, 0);
+	//setvbuf(stderr, NULL, _IONBF, 0);
 }
 
 void utilStandardIOReset(int stdfd[3], fpos_t stdpos[3])
@@ -45,19 +49,31 @@ void utilStandardIOReset(int stdfd[3], fpos_t stdpos[3])
 	FILE *stdf[3] = {stdin, stdout, stderr};
 	int i;
 
-	if(stdfd == NULL || stdpos == NULL)
-		return;
-
 	for(i = 0; i < 3; ++i)
 	{
 		fflush(stdf[i]);
 
 		close(stdid[i]);
-		dup(stdfd[i]);
-		close(stdfd[i]);
+		if(stdfd != NULL)
+		{
+			dup(stdfd[i]);
+			close(stdfd[i]);
+		}
 
-		fsetpos(stdf[i], &stdpos[i]);
+		if(stdpos != NULL)
+			fsetpos(stdf[i], &stdpos[i]);
 		clearerr(stdf[i]);
+	}
+}
+
+void utilStandardIOSimpleRedirect(int to)
+{
+	int i;
+	for(i = 0; i < 3; ++i)
+	{
+		close(i);
+		if(to >= 0)
+			dup(to);
 	}
 }
 

@@ -29,7 +29,7 @@ enum{ ElfMaximalStringLength = 4096 };
 typedef struct Elf
 {
 	uint8_t *data;
-	uint64_t size; // FIXME: Do more checks on size
+	size_t size; // FIXME: Do more checks on size
 }
 Elf;
 
@@ -556,7 +556,7 @@ ElfSymbol *elfSymbol(Elf *elf, char *name, uint16_t *index, ElfSymbolAttribute a
 
 /* actions */
 
-Elf *elfCreate(void *data, uint64_t size)
+Elf *elfCreate(void *data, size_t size)
 {
 	Elf *elf, t;
 

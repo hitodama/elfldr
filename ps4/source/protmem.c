@@ -23,8 +23,6 @@ typedef struct ProtectedMemory
 {
 	void *writable;
 	void *executable;
-	int writableHandle;
-	int executableHandle;
 	size_t size;
 }
 ProtectedMemory;
@@ -35,38 +33,98 @@ ProtectedMemory *protectedMemoryAllocate(size_t size)
 	size_t pageSize;
 
 	memory = (ProtectedMemory *)malloc(sizeof(ProtectedMemory));
+	if(memory == NULL)
+		return NULL;
+
 	pageSize = sysconf(_SC_PAGESIZE);
-	memory->size = (size / pageSize + 1) * pageSize;
+	memory->size = ((size - 1) / pageSize + 1) * pageSize;
 
 	return memory;
 }
 
 ProtectedMemory *protectedMemoryCreateEmulation(size_t size)
 {
-	ProtectedMemory *memory = protectedMemoryAllocate(size);
+	int handle;
+	ProtectedMemory *memory;
+
+	if(size == 0)
+		return NULL;
+
+ 	memory = protectedMemoryAllocate(size);
+	if(memory == NULL)
+		return NULL;
 
 	//int memoryFile = open("/dev/zero", O_RDWR);
-	memory->executableHandle = shm_open("/elfloader", O_CREAT|O_TRUNC|O_RDWR, 0755);
-	ftruncate(memory->executableHandle, memory->size);
-	memory->writableHandle = memory->executableHandle;
-	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_FILE | MAP_SHARED, memory->executableHandle, 0);
-	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_FILE | MAP_SHARED, memory->writableHandle, 0);
+	handle = shm_open("/elfloader", O_CREAT|O_TRUNC|O_RDWR, 0755);
+	if(handle == 0)
+		goto freeandreturn;
+	if(ftruncate(handle, memory->size) == -1)
+		goto closee;
+
+	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_FILE | MAP_SHARED, handle, 0);
+	if(memory->executable == MAP_FAILED)
+		goto closee;
+	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_FILE | MAP_SHARED, handle, 0);
+	if(memory->writable == MAP_FAILED)
+		goto munmape;
+
+	close(handle);
 
 	return memory;
+
+	munmape:
+		munmap(memory->executable, memory->size);
+	closee:
+		close(handle);
+		shm_unlink("/elfloader");
+	freeandreturn:
+		free(memory);
+
+	return NULL;
 }
 
 #ifdef __PS4__
 ProtectedMemory *protectedMemoryCreatePS4(size_t size)
 {
-	ProtectedMemory *memory = protectedMemoryAllocate(size);
+	int executableHandle, writableHandle;
+	ProtectedMemory *memory;
 
-	sceKernelJitCreateSharedMemory(0, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC, &memory->executableHandle);
-	sceKernelJitCreateAliasOfSharedMemory(memory->executableHandle, PROT_READ | PROT_WRITE, &memory->writableHandle);
+	if(size == 0)
+		return NULL;
+
+ 	memory = protectedMemoryAllocate(size);
+	if(memory == NULL)
+		return NULL;
+
+	sceKernelJitCreateSharedMemory(0, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC, &executableHandle);
+	if(executableHandle == 0)
+		goto freeandreturn;
+	sceKernelJitCreateAliasOfSharedMemory(executableHandle, PROT_READ | PROT_WRITE, &writableHandle);
+	if(writableHandle == 0)
+		goto closee;
 	//sceKernelJitMapSharedMemory(memory->writableHandle, PROT_CPU_READ | PROT_CPU_WRITE, &writable);
-	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_SHARED, memory->executableHandle, 0);
-	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_TYPE, memory->writableHandle, 0);
+	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_SHARED, executableHandle, 0);
+	if(memory->executable == MAP_FAILED)
+		goto closew;
+	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_TYPE, writableHandle, 0);
+	if(memory->writable == MAP_FAILED)
+		goto munmape;
+
+	close(executableHandle);
+	close(writableHandle);
 
 	return memory;
+
+	munmape:
+		munmap(memory->executable, memory->size);
+	closew:
+		close(writableHandle);
+	closee:
+		close(executableHandle);
+	freeandreturn:
+		free(memory);
+
+	return NULL;
 }
 #endif
 
@@ -76,10 +134,16 @@ ProtectedMemory *protectedMemoryCreatePlain(size_t size)
 	size_t pageSize = sysconf(_SC_PAGESIZE);
 
 	//if(!(memory->writable = aligned_alloc(memory->alignment, memory->size)))
-	if(posix_memalign(&memory->writable, pageSize, memory->size))
+	if(posix_memalign(&memory->writable, pageSize, memory->size) != 0)
+	{
+		free(memory);
 		return NULL;
-	if(mprotect(memory->writable, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC))
+	}
+	if(mprotect(memory->writable, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC) < 0)
+	{
+		free(memory);
 		return NULL;
+	}
 	memory->executable = memory->writable;
 
 	return memory;
@@ -98,12 +162,11 @@ ProtectedMemory *protectedMemoryCreate(size_t size)
 int protectedMemoryDestroyPS4(ProtectedMemory *memory)
 {
 	int r = 0;
+	if(memory == NULL)
+		return -1;
 	r |= munmap(memory->writable, memory->size);
 	r |= munmap(memory->executable, memory->size);
-	if(close(memory->writableHandle) == EOF)
-		r = -1;
-	if(close(memory->executableHandle) == EOF)
-		r = -1;
+	free(memory);
 	return r;
 }
 #endif
@@ -111,42 +174,53 @@ int protectedMemoryDestroyPS4(ProtectedMemory *memory)
 int protectedMemoryDestroyEmulation(ProtectedMemory *memory)
 {
 	int r = 0;
+	if(memory == NULL)
+		return -1;
 	r |= munmap(memory->writable, memory->size);
 	r |= munmap(memory->executable, memory->size);
 	r |= shm_unlink("/elfloader");
 	//close(memoryFile);
+	free(memory);
 	return r;
 }
 
 int protectedMemoryDestroyPlain(ProtectedMemory *memory)
 {
+	if(memory == NULL)
+		return -1;
 	free(memory->writable);
+	free(memory);
 	return 0;
 }
 
 int protectedMemoryDestroy(ProtectedMemory *memory)
 {
-	int r;
+	if(memory == NULL)
+		return -1;
 	#if defined(__PS4__)
-		r = protectedMemoryDestroyPS4(memory);
+		return protectedMemoryDestroyPS4(memory);
 	#else
-		r = protectedMemoryDestroyPlain(memory);
+		return protectedMemoryDestroyPlain(memory);
 	#endif
-	free(memory);
-	return r;
 }
 
 void *protectedMemoryWritable(ProtectedMemory *memory)
 {
+	if(memory == NULL)
+		return NULL;
 	return memory->writable;
 }
 
 void *protectedMemoryExecutable(ProtectedMemory *memory)
 {
+	if(memory == NULL)
+		return NULL;
 	return memory->executable;
 }
 
 size_t protectedMemorySize(ProtectedMemory *memory)
 {
+	if(memory == NULL)
+		return 0;
 	return memory->size;
 }
