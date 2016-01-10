@@ -8,13 +8,13 @@ void configFromDefines(ElfLoaderConfig *config)
 
 	#ifdef ElfLoaderServer
 		config->elfInputMode = ElfInputServer;
-	else
+	#else
 		config->elfInputMode = ElfInputFile;
 	#endif
 
 	#ifdef ElfLoaderEmulatePS4Memory
 		config->memoryMode = MemoryEmulate;
-	else
+	#else
 		config->memoryMode = MemoryPlain;
 	#endif
 

@@ -7,6 +7,8 @@
 void utilStandardIORedirect(int to, int stdfd[3], fpos_t stdpos[3]);
 void utilStandardIOReset(int stdfd[3], fpos_t stdpos[3]);
 
+void utilStandardIOSimpleRedirect(int to);
+
 int utilServerCreate(int port, int backlog, int try, unsigned int sec);
 int utilSingleAcceptServer(int port);
 

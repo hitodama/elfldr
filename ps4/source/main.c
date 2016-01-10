@@ -22,6 +22,9 @@
 #if defined(BinaryLoader) && !defined(__PS4__)
 	#error BinaryLoader can not be build on x86-64
 #endif
+#if defined(BinaryLoader) && defined(ElfLoaderStandardIORedirectLazy)
+	#error BinaryLoader does not support lazy io
+#endif
 
 /* Types */
 
@@ -34,21 +37,23 @@ typedef struct MainAndMemory
 }
 MainAndMemory;
 
-static ElfLoaderConfig *config;
-
 /* Constants */
 
-enum{ StandardIOPort = 5052 };
+enum{ StandardIOServerPort = 5052 };
 enum{ ServerPort = 5053 }; //hex(P) + hex(S)
 enum{ ServerRetry = 20 };
 enum{ ServerTimeout = 1 };
 enum{ ServerBacklog = 10 };
 
-/* Binary loader (backwards compatibility) */
+/* Globals */
+
+static ElfLoaderConfig *config;
+static volatile int ioServer;
+static pthread_t ioThread;
+
+/* Standard IO globals for PS4 */
 
 #ifdef __PS4__
-#include <kernel.h>
-
 FILE *__stdinp;
 FILE **__stdinp_addr;
 FILE *__stdoutp;
@@ -59,6 +64,8 @@ int __isthreaded;
 int *__isthreaded_addr;
 #endif
 
+/* Binary loader (backwards compatibility) synced but rarely tested */
+
 #ifdef BinaryLoader
 int main(int argc, char **argv)
 #else
@@ -68,12 +75,10 @@ int binaryLoaderMain(int argc, char **argv)
 	int server, client;
 	uint8_t *payload = (uint8_t *)Payload;
 	ssize_t r;
-	int ret;
 
 	int stdfd[3];
 	fpos_t stdpos[3];
-
-	signal(SIGPIPE, SIG_IGN);
+	struct sigaction sa;
 
 	#ifdef __PS4__
 	int libc = sceKernelLoadStartModule("libSceLibcInternal.sprx", 0, NULL, 0, 0, 0);
@@ -87,18 +92,27 @@ int binaryLoaderMain(int argc, char **argv)
 	__isthreaded = *__isthreaded_addr;
 	#endif
 
+	sa.sa_handler = SIG_IGN;
+	sa.sa_flags = 0;
+	sigaction(SIGPIPE, &sa, 0);
+	setvbuf(stdin, NULL, _IOLBF, 0);
+	setvbuf(stdout, NULL, _IONBF, 0);
+	setvbuf(stderr, NULL, _IONBF, 0);
+
 	config = malloc(sizeof(ElfLoaderConfig));
 	configFromDefines(config);
 
 	if(config->debugMode == DebugOn)
+		debugEnable();
+
+	if(config->standardIORedirectMode == StandardIORedirectWait)
 	{
-		int debug = utilSingleAcceptServer(StandardIOPort);
+		int debug = utilSingleAcceptServer(StandardIOServerPort);
 		utilStandardIORedirect(debug, stdfd, stdpos);
 		close(debug);
-		debugEnable();
 	}
 
-	debugPrint("debugOpen(%i)\n", StandardIOPort);
+	debugPrint("debugOpen(%i)\n", StandardIOServerPort);
 
 	debugPrint("Mode -> BinaryLoader\n");
 
@@ -126,21 +140,51 @@ int binaryLoaderMain(int argc, char **argv)
 	}
 
 	debugPrint("close(%i) -> ", client);
-	ret = close(client);
-	debugPrint("%i\n", ret);
+	debugPrint("%i\n", close(client));
 	debugPrint("close(%i) -> ", server);
-	ret = close(client);
-	debugPrint("%i\n", ret);
+	debugPrint("%i\n", close(client));
 
 	debugPrint("Executing binary at %p", (void *)payload);
 
 	debugPrint("debugClose()\n");
 
-	utilStandardIOReset(stdfd, stdpos);
+	if(config->debugMode == DebugOn || config->standardIORedirectMode == StandardIORedirectWait)
+		utilStandardIOReset(stdfd, stdpos);
 
 	free(config);
 
 	return EXIT_SUCCESS;
+}
+
+/* Standard IO server */
+
+void *elfLoaderStandardIOServerThread(void *arg)
+{
+	int reset = 0;
+	int client;
+	int stdfd[3];
+	fpos_t stdpos[3];
+
+ 	if((ioServer = utilServerCreate(StandardIOServerPort, 10, 20, 1)) < 0)
+		return NULL;
+
+	// FIXME: 0,1,2 would be trouble
+	while(ioServer >= 0)
+	{
+		client = accept(ioServer, NULL, NULL);
+
+		if(reset)
+			utilStandardIOReset(stdfd, stdpos);
+		reset = 1;
+
+		if(client < 0 || ioServer < 0)
+			continue;
+
+		utilStandardIORedirect(client, stdfd, stdpos);
+		close(client);
+	}
+
+	return NULL;
 }
 
 /* elf utils */
@@ -148,15 +192,15 @@ int binaryLoaderMain(int argc, char **argv)
 Elf *elfCreateFromSocket(int client)
 {
 	Elf *elf;
-	uint64_t s;
+	size_t s;
 
-	void * m = utilAllocUnsizeableFileFromDescriptor(client, &s);
+	void *m = utilAllocUnsizeableFileFromDescriptor(client, &s);
 	if(m == NULL)
 		return NULL;
 	elf = elfCreate(m, s);
 	if(!elfLoaderIsLoadable(elf))
 	{
-		free(m);
+		elfDestroyAndFree(elf);
 		elf = NULL;
 	}
 
@@ -166,7 +210,7 @@ Elf *elfCreateFromSocket(int client)
 Elf *elfCreateFromFile(char *path)
 {
 	Elf *elf;
-	uint64_t s;
+	size_t s;
 
 	void * m = utilAllocFile(path, &s);
 	if(m == NULL)
@@ -174,7 +218,7 @@ Elf *elfCreateFromFile(char *path)
 	elf = elfCreate(m, s);
 	if(!elfLoaderIsLoadable(elf))
 	{
-		free(m);
+		elfDestroyAndFree(elf);
 		elf = NULL;
 	}
 
@@ -183,24 +227,10 @@ Elf *elfCreateFromFile(char *path)
 
 /* elf loader surface (view) wrappers*/
 
-int elfLoaderServerCreate()
-{
-	int server;
-
-	debugPrint("utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
-	if((server = utilServerCreate(ServerPort, ServerRetry, ServerTimeout, ServerBacklog)) < 0)
-		debugPrint("Server creation failed %i", server);
-	else
-		debugPrint("%i\n", server);
-
-	return server;
-}
-
 Elf *elfLoaderServerAcceptElf(int server)
 {
 	int client;
 	Elf *elf;
-	int ret;
 
 	if(server < 0)
 	{
@@ -226,22 +256,9 @@ Elf *elfLoaderServerAcceptElf(int server)
 		debugPrint("%p\n", (void *)elf);
 
 	debugPrint("close(%i) -> ", client);
-	ret = close(client);
-	debugPrint("%i\n", ret);
+	debugPrint("%i\n", close(client));
 
 	return elf;
-}
-
-void elfLoaderServerDestroy(int server)
-{
-	if(server < 0)
-	{
-		debugPrint("Server is not a file descriptor");
-		return;
-	}
-
-	debugPrint("close(%i) -> ", server);
-	debugPrint("%i\n", close(server));
 }
 
 Elf *elfLoaderCreateElfFromPath(char *file)
@@ -439,26 +456,6 @@ void elfLoaderRunAsync(Elf *elf)
 		free(mm);
 }
 
-void *elfLoaderSingleAcceptServerAsync(void *server)
-{
-	int client;
-	int *s = (int *)server;
-	int stdfd[3];
-	fpos_t stdpos[3];
-
-	if((*s = utilServerCreate(StandardIOPort, 1, 20, 1)) < 0)
-		return NULL;
-	client = accept(*s, NULL, NULL);
-	if(*s >= 0)
-		close(*s);
-	if(client < 0)
-		return NULL;
-	utilStandardIORedirect(client, stdfd, stdpos);
-	close(client);
-
-	return NULL;
-}
-
 #ifdef BinaryLoader
 int elfLoaderMain(int argc, char **argv)
 #else
@@ -467,11 +464,9 @@ int main(int argc, char **argv)
 {
 	int server; // only used in ElfInputServer
 	Elf *elf;
-
 	int stdfd[3];
 	fpos_t stdpos[3];
-	int standardIOAsyncSocket;
-	pthread_t standardIOAsyncSetup;
+	struct sigaction sa;
 
 	#ifdef __PS4__
 	int libc = sceKernelLoadStartModule("libSceLibcInternal.sprx", 0, NULL, 0, 0, 0);
@@ -485,7 +480,12 @@ int main(int argc, char **argv)
 	__isthreaded = *__isthreaded_addr;
 	#endif
 
-	signal(SIGPIPE, SIG_IGN);
+	sa.sa_handler = SIG_IGN;
+	sa.sa_flags = 0;
+	sigaction(SIGPIPE, &sa, 0);
+	setvbuf(stdin, NULL, _IOLBF, 0);
+	setvbuf(stdout, NULL, _IONBF, 0);
+	setvbuf(stderr, NULL, _IONBF, 0);
 
 	config = malloc(sizeof(ElfLoaderConfig));
 	configFromDefines(config);
@@ -504,67 +504,77 @@ int main(int argc, char **argv)
 		debugEnable();
 
 	if(config->elfInputMode == ElfInputFile)
+	{
 		debugPrint("debugOpen(STDERR_FILENO)\n");
-	else
-	{
-		if(config->standardIORedirectMode == StandardIORedirectWait)
-		{
-			int debug = utilSingleAcceptServer(StandardIOPort);
-			utilStandardIORedirect(debug, stdfd, stdpos);
-			close(debug);
-		}
-		else if(config->standardIORedirectMode == StandardIORedirectLazy)
-			pthread_create(&standardIOAsyncSetup, NULL, elfLoaderSingleAcceptServerAsync, &standardIOAsyncSocket);
 
-		debugPrint("debugOpen(%i)\n", StandardIOPort);
-	}
+		debugPrint("Mode -> ElfLoader [input: %i, memory: %i, thread: %i, debug: %i, stdio: %i]\n",
+			config->elfInputMode, config->memoryMode, config->threadingMode, config->debugMode, config->standardIORedirectMode);
 
-	debugPrint("Mode -> ElfLoader [input: %i, memory: %i, thread: %i, debug: %i, stdio: %i]\n",
-		config->elfInputMode, config->memoryMode, config->threadingMode, config->debugMode, config->standardIORedirectMode);
-
-	if(config->elfInputMode == ElfInputServer)
-	{
-		server = elfLoaderServerCreate();
-		if(config->threadingMode == Threading)
-		{
-			for(;;)
-			{
-				elf = elfLoaderServerAcceptElf(server);
- 				if(elf == NULL) // to stop, send a non-elf file - cheesy I know
-					break;
-				elfLoaderRunAsync(elf);
-			}
-		}
-		else
-		{
-			elf = elfLoaderServerAcceptElf(server);
-			if(elf != NULL)
-				elfLoaderRunSync(elf);
-		}
-		elfLoaderServerDestroy(server);
-	}
-	else // if(elfInputMode == ElfInputFile)
-	{
 		elf = elfLoaderCreateElfFromPath(config->inputFile);
 		if(elf != NULL)
 			elfLoaderRunSync(elf);
 	}
+	else // if(elfInputMode == ElfInputServer)
+	{
+		if(config->standardIORedirectMode == StandardIORedirectWait)
+		{
+			int debug = utilSingleAcceptServer(StandardIOServerPort);
+			utilStandardIORedirect(debug, stdfd, stdpos);
+			close(debug);
+		}
+		else if(config->standardIORedirectMode == StandardIORedirectLazy)
+			pthread_create(&ioThread, NULL, elfLoaderStandardIOServerThread, NULL);
+
+		debugPrint("debugOpen(%i)\n", StandardIOServerPort);
+
+		debugPrint("Mode -> ElfLoader [input: %i, memory: %i, thread: %i, debug: %i, stdio: %i]\n",
+			config->elfInputMode, config->memoryMode, config->threadingMode, config->debugMode, config->standardIORedirectMode);
+
+		debugPrint("utilServerCreate(%i, %i, %i) -> ", ServerPort, ServerRetry, ServerTimeout);
+		if((server = utilServerCreate(ServerPort, ServerRetry, ServerTimeout, ServerBacklog)) < 0)
+			debugPrint("Server creation failed %i", server);
+		else
+			debugPrint("%i\n", server);
+
+		if(server > 0)
+		{
+			if(config->threadingMode == ThreadingNone)
+			{
+				elf = elfLoaderServerAcceptElf(server);
+				debugPrint("close(%i) -> ", server);
+				debugPrint("%i\n", close(server));
+				elfLoaderRunSync(elf);
+			}
+			else
+			{
+				while(1)
+				{
+					elf = elfLoaderServerAcceptElf(server);
+	 				if(elf == NULL) // to stop, send a non-elf file - cheesy I know
+						break;
+					elfLoaderRunAsync(elf);
+				}
+				debugPrint("close(%i) -> ", server);
+				debugPrint("%i\n", close(server));
+			}
+		}
+	}
 
 	debugPrint("debugClose()\n");
 
-	if(config->standardIORedirectMode == StandardIORedirectLazy)
+	if(config->elfInputMode == ElfInputServer)
 	{
-		int s = standardIOAsyncSocket;
-		standardIOAsyncSocket = -1;
-		shutdown(s, SHUT_RDWR);
-		pthread_join(standardIOAsyncSetup, NULL);
+		if(config->standardIORedirectMode == StandardIORedirectWait)
+			utilStandardIOReset(stdfd, stdpos);
+		else if(config->standardIORedirectMode == StandardIORedirectLazy)
+		{
+			int s = ioServer;
+			ioServer = -1;
+			shutdown(s, SHUT_RDWR);
+			close(s);
+			pthread_join(ioThread, NULL);
+		}
 	}
-
-	if(config->standardIORedirectMode != StandardIORedirectNone && config->elfInputMode == ElfInputServer)
-		utilStandardIOReset(stdfd, stdpos);
-
-	//if(config->standardIORedirectMode == StandardIORedirectWait && config->elfInputMode == ElfInputServer)
-	//	utilStandardIOReset(stdfd, stdpos);
 
 	free(config);
 

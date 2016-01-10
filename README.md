@@ -8,16 +8,19 @@ Elf loader
 The loader requires the following things:
 - basic build-tools (clang due to ps4 support)
 - ps4dev/libps4
-- node.js to run the server and client
+- node.js to run the server
+- socat, netcat etc
 
-Node is needed to run the server, debug (diagnostic) output client and the file uploader. You will also need a current version of clang or alter the Makefile (remove -target specifically additionally ld/objectcopy may produce undesired (large) binaries).
+You will also need a current version of clang or alter the Makefile (remove -target specifically additionally ld/objectcopy may produce undesired (large) binaries).
 
-You can of course use other tools for the server, upload and debug output (netcat or a C implementation for example).
+You can of course use other tools for the server, upload or debug output (socat, netcat or a C implementation for example).
 
 The elf loader does not support dynamically linked executables. All libraries need to be statically linked into the executable. You can try musl for an easy to build and use statically linkable libc on your x86-64 linux system (e.g. to test elfs
 locally). Libps4 provides a statically linkable libc for the PS4.
 
 ##Usage and Hints
+You may want to look into the Makefile, index.html, config.c and other files as they will (hopefully somewhat understandably) show you switches (defines / flags) you can use and what they do.
+
 ###Make
 ```
 make clean
@@ -47,61 +50,52 @@ Options:
 --stdio-wait				// enables stdio redirect, connection must be made prior to running code
 --stdio-lazy				// enables stdio redirect, connection can be made later, output will be lost
 ```
-###Examples
-####Local
-```
-// build for the ps4
-make clean && make debug=true
 
-// build for the local system
-make clean && make debug=true target=x86-64 memory=emulate
-//Now you can try: bin/ldr ../../libps4-examples/libless/stress/bin/stress
-
-// use args to dynamically set modes
-make clean && make target=x86-64
-Now you can try: bin/ldr --debug --server --memory-emulate --threading
-Then connect to 5052 and send the file over 5053
-node client.js 127.0.0.1
-node client.js 127.0.0.1 5053 ../../libps4-examples/libless/stress/bin/stress
-node client.js 127.0.0.1 5053 ../../libps4-examples/libless/stress/bin/stress
-```
-####PS4
-```
-// Start server
-node server.js
-
-// Browse to server
-// Wait until it hangs in step 5
-// Connect debug channel (if build with DEBUG=1 make)
-node client.js 192.168.1.45
-
-// Send file
-node client.js 192.168.1.45 5053 ../../libps4-examples/libless/stress/bin/stress
-// Return code is not returned to the browser (0 is)
-// Use your own IO channel (socket) or debug
-```
-
-# Internals
-
-You may want to look into the Makefile, main.c, protmem.c, index.html and other files as they will (hopefully somewhat understandably) show you switches (flags) you can use and what they do.
-
-##Switches
-###local/index.html
+##Switches in local/index.html
 ```
 var loopOnExit = true; // wait again after normal termination of code (otherwise segfault)
 var debug = 3; // show more or less infos in load steps
 var debugWait = 4000; // wait per step (to read info) applied on debug >= 3
 ```
 
-###Defines used
+
+###Examples
+####Local
 ```
-__PS4__ // Set in the Makefile for all PS4 builds
-Debug || DEBUG // Set one of the env. variables to build in debug mode (see below)
-Libps4 || LIBPS4 // Set one of the env. variables to the Libps4 path
-ElfLoaderServer // Run loader as server by default (Also Auto-set on __PS4__)
-ElfLoaderEmulatePS4Memory // emulate PS4 memory conditions by default - good for impl. new relocs
-BinaryLoader // run as binary loader
-ElfLoaderThreading // run as threading server
+// build for the local system / set defaults via defines
+make clean && make debug=true target=x86-64 memory=emulate
+
+//Now you can try:
+bin/ldr --file ../../libps4-examples/libless/stress/bin/stress
+
+// use args to dynamically set modes
+make clean && make target=x86-64
+Now you can try:
+bin/ldr --debug --server --memory-emulate --threading
+
+Then connect to 5052 (if debug set) and send the file over 5053
+socat - TCP:127.0.0.1:5052
+socat -u FILE:../../libps4-examples/libless/stress/bin/stress TCP:127.0.0.1:5053
+```
+####PS4
+```
+// build for the ps4 / we need to set all prefered defaults at build time (no args to main)
+make clean && make debug=true stdio=wait
+
+// Start server
+node server.js
+
+// Browse to server
+// Wait until it hangs in step 5
+
+// Connect debug/stdio channel (if build with debug=true or stdio=wait)
+socat - TCP:192.168.1.45:5052
+
+// Send file
+socat -u FILE:../../libps4-examples/libless/stress/bin/stress TCP:192.168.1.45:5053
+
+// Return code is not returned to the browser (0 is)
+// Use stdio=wait, debug=true or your own IO (socket) to get output / return codes
 ```
 
 ##Complete PS4 Debug Example
@@ -114,56 +108,29 @@ Serving directory elfldr/local on port 5350
 
 ###(In debug mode) connect to debug channel. For a non-debug build no such connection can be made.
 ```
-$ node client.js 192.168.1.45
-[local]: Trying to connect to 192.168.1.45:5052
-[local]: Connected 192.168.1.45:5052
-[local]: No file provided -> debug mode (out shell)
-debugOpen(5052) -> 880679da0
-ElfLdr
-utilServerCreate(5053, 1, 20, 1) -> 166
-accept(166, NULL, NULL) -> 167
-elfCreateFromSocket(167) -> 880661500
-protectedMemoryCreate(880661500) -> 88061abe0
-elfLdrLoad(880661500, 202c04000, 202800000) -> 1
-struct memory [88061abe0]
-{
-	writable -> 202a88000
-	executable -> 202684000
-	writableAligned -> 202c04000
-	executableAligned -> 202800000
-	writableHandle -> 167
-	executableHandle -> 166
-	size -> 2098880 = 0x2006c0
-	alignment -> 2097152 = 0x200000
-	pageSize -> 16384 = 0x4000
-	alignedSize -> 4210688 = 0x404000
-}
-run() [202800000 + 0x4f8 = 2028004f8] -> 66 = 66 = 0x42
-protectedMemoryDestroy(88061abe0) -> 1
-elfDestroyAndFree(880661500)
-debugClose(880679da0)
-[local]: Connection closed
+$ socat - TCP:192.168.178.45:5052
+[main|545]: debugOpen(5052)
+[main|548]: Mode -> ElfLoader [input: 1, memory: 0, thread: 0, debug: 1, stdio: 1]
+[main|550]: utilServerCreate(5053, 20, 1) -> [main|554]: 140
+[elfLoaderServerAcceptElf|256]: accept(140, NULL, NULL) -> [elfLoaderServerAcceptElf|263]: 143
+[elfLoaderServerAcceptElf|265]: elfCreateFromSocket(143) -> [elfLoaderServerAcceptElf|271]: 880ba8100
+[elfLoaderServerAcceptElf|273]: close(143) -> [elfLoaderServerAcceptElf|274]: 0
+[main|561]: close(140) -> [main|562]: 0
+[elfLoaderMemoryCreate|311]: protectedMemoryCreate(2098784) -> [elfLoaderMemoryCreate|321]: 880bb8160
+[elfLoaderRunSetup|373]: elfLoaderLoad(880ba8100, 2013ec000, 2011e8000) -> [elfLoaderRunSetup|379]: 0
+[elfLoaderRunSetup|383]: elfDestroyAndFree(880ba8100)
+[elfLoaderRunSync|410]: run(1, {"elf", NULL}) [2011e8000 + elfEntry = 2011e8380] -> [elfLoaderRunSync|412]: 66
+[elfLoaderMemoryDestroy|351]: protectedMemoryDestroy(880bb8160) -> [elfLoaderMemoryDestroy|356]: 0
+[main|580]: debugClose()
+$
 ```
 
 ###Send Elf file
 ```
-$ node client.js 192.168.1.45 5053 ../ps4/stress
-[local]: Trying to connect to 192.168.1.45:5053
-[local]: Connected 192.168.1.45:5053
-[local]: File (../../libps4-examples/libless/stress/bin/stress) provided -> sending mode
-[local]: Sending file
-[local]: Send file
-[local]: Connection closed
+$ socat -u FILE:../../libps4-examples/libless/stress/bin/stress TCP:192.168.178.45:5053
 ```
 
 Binary mode works analogous but is not advertised (since more may go wrong).
-
-##TODO
-- Wait for Kernel -__-?
-	- Obsolete immediately thereafter ^__^
-- Error handling improvements
-- Stub debugger in?
-- Neat loader screen -__-? Probably on a lazy day.
 
 ##Credit
 - Rop/Exec stuff goes to CTurt, flatz, SKFU, droogie, Xerpi, Hunger, Takezo, nas, Proxima
