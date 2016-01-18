@@ -4,7 +4,12 @@
 #include <stdint.h>
 
 /* Warning, written for 64bit systems - need to adapt stuff for 32 */
+#if ULONG_MAX == 0xffffffff
+#define __ELF_WORD_SIZE 32
+#error Elf loader currently does not support 32 bit arches
+#else
 #define __ELF_WORD_SIZE 64
+#endif
 
 #include <elf.h>
 

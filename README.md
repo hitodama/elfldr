@@ -26,15 +26,15 @@ You may want to look into the Makefile, index.html, config.c and other files as 
 make clean
 make
 Options:
-	debug=true			// set loader default to debug mode
- 	target=x86-64		// target of loader, build for x86-64
+	target=x86-64		// target of loader, build for x86-64
 		memory=emulate 	// set loader default to emulate ps4 memory conditions on x86-64
 		server=true		// set loader default to server mode under x86-64
 	target=ps4-bin		// (default) build as bin for the PS4
 		keepelf=true	// keeps elf before converting it to bin (for debug purposes)
 	threading=true		// sets loader default to run elfs threaded (ignored in file mode)
-	stdio=wait|lazy|none // sets default std io redirect mode (lazy is a "may" option), can be combined with debug
-	(ldr=bin			// build loader to accept binaries instead of elfs - best not used)
+	stdio=wait|lazy|none // sets default std io redirect mode (lazy is a "may" option), can be combined with debug (ignored in file mode as well)
+	debug=true			// set loader default to debug mode
+ 	(ldr=bin			// build loader to accept binaries instead of elfs - best not used)
 ```
 ###Commandline (x86-64) Arguments
 ```
@@ -47,8 +47,8 @@ Options:
 --threading					// enable threading mode (multiple elfs can be executed async - to close the server, send a non-elf - this prints return codes out of order)
 --no-threading				// disable threading mode (only one elf runs blocking)
 --stdio-none				// disables stdio redirect, overwritten by debug
---stdio-wait				// enables stdio redirect, connection must be made prior to running code
---stdio-lazy				// enables stdio redirect, connection can be made later, output will be lost
+--stdio-wait				// enables stdio redirect on 5052, connection must be made prior to running code via 5053
+--stdio-lazy				// enables stdio redirect on 5052, connection can be made later, output will be lost
 ```
 
 ##Switches in local/index.html
@@ -63,7 +63,7 @@ var debugWait = 4000; // wait per step (to read info) applied on debug >= 3
 ####Local
 ```
 // build for the local system / set defaults via defines
-make clean && make debug=true target=x86-64 memory=emulate
+make clean && make stdio=wait target=x86-64
 
 //Now you can try:
 bin/ldr --file ../../libps4-examples/libless/stress/bin/stress
@@ -80,7 +80,7 @@ socat -u FILE:../../libps4-examples/libless/stress/bin/stress TCP:127.0.0.1:5053
 ####PS4
 ```
 // build for the ps4 / we need to set all prefered defaults at build time (no args to main)
-make clean && make debug=true stdio=wait
+make clean && make stdio=wait
 
 // Start server
 node server.js
@@ -88,7 +88,7 @@ node server.js
 // Browse to server
 // Wait until it hangs in step 5
 
-// Connect debug/stdio channel (if build with debug=true or stdio=wait)
+// Connect debug/stdio channel (if build with debug=true or stdio=wait or lazy)
 socat - TCP:192.168.1.45:5052
 
 // Send file

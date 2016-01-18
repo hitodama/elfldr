@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -28,7 +30,7 @@
 
 /* Types */
 
-typedef int (*Runnable)(int, char **);
+typedef int (*Runnable)(int argc, char **argv);
 
 typedef struct MainAndMemory
 {
@@ -378,8 +380,8 @@ void elfLoaderRunSync(Elf *elf)
 	int r;
 
 	char *elfName = "elf";
-	char *elfArgv[2] = { elfName, NULL };
-	int elfArgc = sizeof(elfArgv) / sizeof(elfArgv[0]) - 1;
+    char *elfArgv[3] = { elfName, NULL, NULL };
+	int elfArgc = 1;
 
 	if(elf == NULL)
 	{
@@ -392,7 +394,8 @@ void elfLoaderRunSync(Elf *elf)
 
 	if(run != NULL)
 	{
-		debugPrint("run(%i, {\"%s\", NULL}) [%p + elfEntry = %p] -> ", elfArgc, elfArgv[0], protectedMemoryExecutable(memory), (void *)run);
+		debugPrint("run(%i, {%s, %s}) [%p + elfEntry = %p] -> ", elfArgc, elfArgv[0], elfArgv[1], protectedMemoryExecutable(memory), (void *)run);
+
 		r = run(elfArgc, elfArgv);
 		debugPrint("%i\n", r);
 	}
@@ -406,8 +409,8 @@ void *elfLoaderRunAsyncMain(void *mainAndMemory)
 	int r;
 
 	char *elfName = "elf";
-	char *elfArgv[2] = { elfName, NULL };
-	int elfArgc = sizeof(elfArgv) / sizeof(elfArgv[0]) - 1;
+	char *elfArgv[3] = { elfName, NULL, NULL }; // double null term for envp
+	int elfArgc = 1;
 
 	if(mainAndMemory == NULL)
 	{

@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -31,6 +32,7 @@ void utilStandardIORedirect(int to, int stdfd[3], fpos_t stdpos[3])
 
 		if(stdfd != NULL)
 			stdfd[i] = dup(stdid[i]);
+
 		close(stdid[i]);
 		dup(to);
 
@@ -53,12 +55,16 @@ void utilStandardIOReset(int stdfd[3], fpos_t stdpos[3])
 	{
 		fflush(stdf[i]);
 
+		shutdown(stdid[i], SHUT_RDWR);
 		close(stdid[i]);
+
 		if(stdfd != NULL)
 		{
 			dup(stdfd[i]);
 			close(stdfd[i]);
 		}
+		else //fill slots
+			open("/dev/null", O_RDWR, 0);
 
 		if(stdpos != NULL)
 			fsetpos(stdf[i], &stdpos[i]);
@@ -74,6 +80,8 @@ void utilStandardIOSimpleRedirect(int to)
 		close(i);
 		if(to >= 0)
 			dup(to);
+		else
+			open("/dev/null", O_RDWR, 0);
 	}
 }
 

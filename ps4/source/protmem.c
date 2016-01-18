@@ -56,28 +56,29 @@ ProtectedMemory *protectedMemoryCreateEmulation(size_t size)
 
 	//int memoryFile = open("/dev/zero", O_RDWR);
 	handle = shm_open("/elfloader", O_CREAT|O_TRUNC|O_RDWR, 0755);
-	if(handle == 0)
-		goto freeandreturn;
+	if(handle < 0)
+		goto e1;
+
 	if(ftruncate(handle, memory->size) == -1)
-		goto closee;
+		goto e2;
 
 	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_FILE | MAP_SHARED, handle, 0);
 	if(memory->executable == MAP_FAILED)
-		goto closee;
+		goto e2;
 	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_FILE | MAP_SHARED, handle, 0);
 	if(memory->writable == MAP_FAILED)
-		goto munmape;
+		goto e3;
 
 	close(handle);
 
 	return memory;
 
-	munmape:
+	e3:
 		munmap(memory->executable, memory->size);
-	closee:
+	e2:
 		close(handle);
 		shm_unlink("/elfloader");
-	freeandreturn:
+	e1:
 		free(memory);
 
 	return NULL;
@@ -97,31 +98,31 @@ ProtectedMemory *protectedMemoryCreatePS4(size_t size)
 		return NULL;
 
 	sceKernelJitCreateSharedMemory(0, memory->size, PROT_READ | PROT_WRITE | PROT_EXEC, &executableHandle);
-	if(executableHandle == 0)
-		goto freeandreturn;
+	if(executableHandle < 0)
+		goto e1;
 	sceKernelJitCreateAliasOfSharedMemory(executableHandle, PROT_READ | PROT_WRITE, &writableHandle);
-	if(writableHandle == 0)
-		goto closee;
+	if(writableHandle < 0)
+		goto e2;
 	//sceKernelJitMapSharedMemory(memory->writableHandle, PROT_CPU_READ | PROT_CPU_WRITE, &writable);
 	memory->executable = mmap(NULL, memory->size, PROT_READ | PROT_EXEC, MAP_SHARED, executableHandle, 0);
 	if(memory->executable == MAP_FAILED)
-		goto closew;
+		goto e3;
 	memory->writable = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_TYPE, writableHandle, 0);
 	if(memory->writable == MAP_FAILED)
-		goto munmape;
+		goto e4;
 
 	close(executableHandle);
 	close(writableHandle);
 
 	return memory;
 
-	munmape:
+	e4:
 		munmap(memory->executable, memory->size);
-	closew:
+	e3:
 		close(writableHandle);
-	closee:
+	e2:
 		close(executableHandle);
-	freeandreturn:
+	e1:
 		free(memory);
 
 	return NULL;

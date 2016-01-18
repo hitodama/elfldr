@@ -64,7 +64,7 @@ uint64_t elfLargestAlignment(Elf *elf) //ignore ...
 			break;
 
 		// FIXME: Tired of bogus 2MB alignment -> ignore
-		if(alignment < h->p_align)// && h->p_align < 0x200000)
+		if(alignment < h->p_align && h->p_align < 0x200000)
 			alignment = h->p_align;
 		++index;
 	}
