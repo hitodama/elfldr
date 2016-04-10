@@ -1,3 +1,5 @@
+#ifdef ElfLoaderStandalone
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -794,3 +796,5 @@ int elfLoaderLoad(Elf *elf, void *writable, void *executable)
 
 	return r;
 }
+
+#endif

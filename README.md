@@ -116,11 +116,11 @@ $ socat - TCP:192.168.178.45:5052
 [elfLoaderServerAcceptElf|265]: elfCreateFromSocket(143) -> [elfLoaderServerAcceptElf|271]: 880ba8100
 [elfLoaderServerAcceptElf|273]: close(143) -> [elfLoaderServerAcceptElf|274]: 0
 [main|561]: close(140) -> [main|562]: 0
-[elfLoaderMemoryCreate|311]: protectedMemoryCreate(2098784) -> [elfLoaderMemoryCreate|321]: 880bb8160
+[elfLoaderMemoryCreate|311]: ps4ProtectedMemoryCreate(2098784) -> [elfLoaderMemoryCreate|321]: 880bb8160
 [elfLoaderRunSetup|373]: elfLoaderLoad(880ba8100, 2013ec000, 2011e8000) -> [elfLoaderRunSetup|379]: 0
 [elfLoaderRunSetup|383]: elfDestroyAndFree(880ba8100)
 [elfLoaderRunSync|410]: run(1, {"elf", NULL}) [2011e8000 + elfEntry = 2011e8380] -> [elfLoaderRunSync|412]: 66
-[elfLoaderMemoryDestroy|351]: protectedMemoryDestroy(880bb8160) -> [elfLoaderMemoryDestroy|356]: 0
+[elfLoaderMemoryDestroy|351]: PS4ProtectedMemoryDestroy(880bb8160) -> [elfLoaderMemoryDestroy|356]: 0
 [main|580]: debugClose()
 $
 ```

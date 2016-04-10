@@ -1,17 +1,21 @@
 #ifndef ProtMem_H
 #define ProtMem_H
 
-typedef struct ProtectedMemory ProtectedMemory;
+#ifdef ElfLoaderStandalone
 
-void *protectedMemoryWritable(ProtectedMemory *memory);
-void *protectedMemoryExecutable(ProtectedMemory *memory);
-size_t protectedMemorySize(ProtectedMemory *memory);
+typedef struct PS4ProtectedMemory PS4ProtectedMemory;
 
-ProtectedMemory *protectedMemoryCreate(size_t size);
-ProtectedMemory *protectedMemoryCreateEmulation(size_t size);
-int protectedMemoryDestroy(ProtectedMemory *memory);
-int protectedMemoryDestroyEmulation(ProtectedMemory *memory);
+void *ps4ProtectedMemoryWritableAddress(PS4ProtectedMemory *memory);
+void *ps4ProtectedMemoryExecutableAddress(PS4ProtectedMemory *memory);
+size_t ps4ProtectedMemorySize(PS4ProtectedMemory *memory);
 
-void protectedMemoryDebugPrint(ProtectedMemory *memory);
+PS4ProtectedMemory *ps4ProtectedMemoryCreate(size_t size);
+PS4ProtectedMemory *ps4ProtectedMemoryCreateEmulation(size_t size);
+int ps4ProtectedMemoryDestroy(PS4ProtectedMemory *memory);
+int ps4ProtectedMemoryDestroyEmulation(PS4ProtectedMemory *memory);
+
+void ps4ProtectedMemoryDebugPrint(PS4ProtectedMemory *memory);
+
+#endif
 
 #endif

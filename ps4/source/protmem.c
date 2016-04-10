@@ -1,3 +1,5 @@
+#ifdef ElfLoaderStandalone
+
 #define _XOPEN_SOURCE 700
 #define __BSD_VISIBLE 1
 #define _DEFAULT_SOURCE 1
@@ -19,20 +21,20 @@
 	#define MAP_TYPE 0x0f
 #endif
 
-typedef struct ProtectedMemory
+typedef struct PS4ProtectedMemory
 {
 	void *writable;
 	void *executable;
 	size_t size;
 }
-ProtectedMemory;
+PS4ProtectedMemory;
 
-ProtectedMemory *protectedMemoryAllocate(size_t size)
+PS4ProtectedMemory *ps4ProtectedMemoryAllocate(size_t size)
 {
-	ProtectedMemory *memory;
+	PS4ProtectedMemory *memory;
 	size_t pageSize;
 
-	memory = (ProtectedMemory *)malloc(sizeof(ProtectedMemory));
+	memory = (PS4ProtectedMemory *)malloc(sizeof(PS4ProtectedMemory));
 	if(memory == NULL)
 		return NULL;
 
@@ -42,15 +44,15 @@ ProtectedMemory *protectedMemoryAllocate(size_t size)
 	return memory;
 }
 
-ProtectedMemory *protectedMemoryCreateEmulation(size_t size)
+PS4ProtectedMemory *ps4ProtectedMemoryCreateEmulation(size_t size)
 {
 	int handle;
-	ProtectedMemory *memory;
+	PS4ProtectedMemory *memory;
 
 	if(size == 0)
 		return NULL;
 
- 	memory = protectedMemoryAllocate(size);
+ 	memory = ps4ProtectedMemoryAllocate(size);
 	if(memory == NULL)
 		return NULL;
 
@@ -85,15 +87,15 @@ ProtectedMemory *protectedMemoryCreateEmulation(size_t size)
 }
 
 #ifdef __PS4__
-ProtectedMemory *protectedMemoryCreatePS4(size_t size)
+PS4ProtectedMemory *ps4ProtectedMemoryCreatePS4(size_t size)
 {
 	int executableHandle, writableHandle;
-	ProtectedMemory *memory;
+	PS4ProtectedMemory *memory;
 
 	if(size == 0)
 		return NULL;
 
- 	memory = protectedMemoryAllocate(size);
+ 	memory = ps4ProtectedMemoryAllocate(size);
 	if(memory == NULL)
 		return NULL;
 
@@ -129,9 +131,9 @@ ProtectedMemory *protectedMemoryCreatePS4(size_t size)
 }
 #endif
 
-ProtectedMemory *protectedMemoryCreatePlain(size_t size)
+PS4ProtectedMemory *ps4ProtectedMemoryCreatePlain(size_t size)
 {
-	ProtectedMemory *memory = protectedMemoryAllocate(size);
+	PS4ProtectedMemory *memory = ps4ProtectedMemoryAllocate(size);
 	size_t pageSize = sysconf(_SC_PAGESIZE);
 
 	//if(!(memory->writable = aligned_alloc(memory->alignment, memory->size)))
@@ -150,17 +152,17 @@ ProtectedMemory *protectedMemoryCreatePlain(size_t size)
 	return memory;
 }
 
-ProtectedMemory *protectedMemoryCreate(size_t size)
+PS4ProtectedMemory *ps4ProtectedMemoryCreate(size_t size)
 {
 	#ifdef __PS4__
-		return protectedMemoryCreatePS4(size);
+		return ps4ProtectedMemoryCreatePS4(size);
 	#else
-		return protectedMemoryCreatePlain(size);
+		return ps4ProtectedMemoryCreatePlain(size);
 	#endif
 }
 
 #if defined(__PS4__)
-int protectedMemoryDestroyPS4(ProtectedMemory *memory)
+int ps4ProtectedMemoryDestroyPS4(PS4ProtectedMemory *memory)
 {
 	int r = 0;
 	if(memory == NULL)
@@ -172,7 +174,7 @@ int protectedMemoryDestroyPS4(ProtectedMemory *memory)
 }
 #endif
 
-int protectedMemoryDestroyEmulation(ProtectedMemory *memory)
+int ps4ProtectedMemoryDestroyEmulation(PS4ProtectedMemory *memory)
 {
 	int r = 0;
 	if(memory == NULL)
@@ -185,7 +187,7 @@ int protectedMemoryDestroyEmulation(ProtectedMemory *memory)
 	return r;
 }
 
-int protectedMemoryDestroyPlain(ProtectedMemory *memory)
+int ps4ProtectedMemoryDestroyPlain(PS4ProtectedMemory *memory)
 {
 	if(memory == NULL)
 		return -1;
@@ -194,34 +196,36 @@ int protectedMemoryDestroyPlain(ProtectedMemory *memory)
 	return 0;
 }
 
-int protectedMemoryDestroy(ProtectedMemory *memory)
+int ps4ProtectedMemoryDestroy(PS4ProtectedMemory *memory)
 {
 	if(memory == NULL)
 		return -1;
 	#if defined(__PS4__)
-		return protectedMemoryDestroyPS4(memory);
+		return üps4ProtectedMemoryDestroyPS4(memory);
 	#else
-		return protectedMemoryDestroyPlain(memory);
+		return ps4ProtectedMemoryDestroyPlain(memory);
 	#endif
 }
 
-void *protectedMemoryWritable(ProtectedMemory *memory)
+void *ps4ProtectedMemoryWritableAddress(PS4ProtectedMemory *memory)
 {
 	if(memory == NULL)
 		return NULL;
 	return memory->writable;
 }
 
-void *protectedMemoryExecutable(ProtectedMemory *memory)
+void *ps4ProtectedMemoryExecutableAddress(PS4ProtectedMemory *memory)
 {
 	if(memory == NULL)
 		return NULL;
 	return memory->executable;
 }
 
-size_t protectedMemorySize(ProtectedMemory *memory)
+size_t ps4ProtectedMemorySize(PS4ProtectedMemory *memory)
 {
 	if(memory == NULL)
 		return 0;
 	return memory->size;
 }
+
+#endif

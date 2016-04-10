@@ -11,8 +11,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#include "elfloader.h"
-#include "protmem.h"
+#include <ps4/elfloader.h>
+#include <ps4/protectedmemory.h>
 #include "util.h"
 #include "debug.h"
 #include "config.h"
@@ -35,7 +35,7 @@ typedef int (*Runnable)(int argc, char **argv);
 typedef struct MainAndMemory
 {
 	Runnable main;
-	ProtectedMemory *memory;
+	PS4ProtectedMemory *memory;
 }
 MainAndMemory;
 
@@ -107,7 +107,7 @@ int binaryLoaderMain(int argc, char **argv)
 	if(config->debugMode == DebugOn)
 		debugEnable();
 
-	if(config->standardIORedirectMode == StandardIORedirectWait)
+	if(config->debugMode == DebugOn || config->standardIORedirectMode == StandardIORedirectWait)
 	{
 		int debug = utilSingleAcceptServer(StandardIOServerPort);
 		utilStandardIORedirect(debug, stdfd, stdpos);
@@ -144,7 +144,7 @@ int binaryLoaderMain(int argc, char **argv)
 	debugPrint("close(%i) -> ", client);
 	debugPrint("%i\n", close(client));
 	debugPrint("close(%i) -> ", server);
-	debugPrint("%i\n", close(client));
+	debugPrint("%i\n", close(server));
 
 	debugPrint("Executing binary at %p", (void *)payload);
 
@@ -253,7 +253,7 @@ Elf *elfLoaderServerAcceptElf(int server)
 	elf = elfCreateFromSocket(client);
 
 	if(elf == NULL)
-		debugPrint("File could not be read or doesn't seem to be an ELF\n");
+		debugPrint("File could not be read or doesn't seem to be a PIC ELF\n");
 	else
 		debugPrint("%p\n", (void *)elf);
 
@@ -275,17 +275,17 @@ Elf *elfLoaderCreateElfFromPath(char *file)
 
 	debugPrint("elfCreateFromFile(%s) -> ", file);
 	if((elf = elfCreateFromFile(file)) == NULL)
-		debugPrint("File could not be read or doesn't seem to be an ELF\n");
+		debugPrint("File could not be read or doesn't seem to be a PIC ELF\n");
 	else
 		debugPrint("%p\n", (void *)elf);
 
 	return elf;
 }
 
-ProtectedMemory *elfLoaderMemoryCreate(Elf *elf)
+PS4ProtectedMemory *elfLoaderMemoryCreate(Elf *elf)
 {
 	size_t size;
-	ProtectedMemory *memory;
+	PS4ProtectedMemory *memory;
 
 	if(elf == NULL)
 	{
@@ -295,12 +295,16 @@ ProtectedMemory *elfLoaderMemoryCreate(Elf *elf)
 
 	size = elfMemorySize(elf);
 
-	debugPrint("protectedMemoryCreate(%zu) -> ", size);
+	debugPrint("ps4ProtectedMemoryCreate(%zu) -> ", size);
 
-	if(config->memoryMode == MemoryEmulate)
-		memory = protectedMemoryCreateEmulation(size);
-	else
-		memory = protectedMemoryCreate(size);
+	#ifdef ElfLoaderStandalone
+		if(config->memoryMode == MemoryEmulate)
+			memory = ps4ProtectedMemoryCreateEmulation(size);
+		else
+			memory = ps4ProtectedMemoryCreate(size);
+	#else
+		memory = ps4ProtectedMemoryCreate(size);
+	#endif
 
 	if(memory == NULL)
 		debugPrint("Memory Setup failed\n");
@@ -310,22 +314,26 @@ ProtectedMemory *elfLoaderMemoryCreate(Elf *elf)
 	return memory;
 }
 
-int elfLoaderMemoryDestroySilent(ProtectedMemory *memory)
+int elfLoaderMemoryDestroySilent(PS4ProtectedMemory *memory)
 {
 	int r;
 
 	if(memory == NULL)
 		return -1;
 
-	if(config->memoryMode == MemoryEmulate)
-		r = protectedMemoryDestroyEmulation(memory);
-	else
-		r = protectedMemoryDestroy(memory);
+	#ifdef ElfLoaderStandalone
+		if(config->memoryMode == MemoryEmulate)
+			r = ps4ProtectedMemoryDestroyEmulation(memory);
+		else
+			r = ps4ProtectedMemoryDestroy(memory);
+	#else
+		r = ps4ProtectedMemoryDestroy(memory);
+	#endif
 
 	return r;
 }
 
-int elfLoaderMemoryDestroy(ProtectedMemory *memory)
+int elfLoaderMemoryDestroy(PS4ProtectedMemory *memory)
 {
 	int r;
 
@@ -335,7 +343,7 @@ int elfLoaderMemoryDestroy(ProtectedMemory *memory)
 		return -1;
 	}
 
-	debugPrint("protectedMemoryDestroy(%p) -> ", (void *)memory);
+	debugPrint("PS4ProtectedMemoryDestroy(%p) -> ", (void *)memory);
 	r = elfLoaderMemoryDestroySilent(memory);
 
 	if(r < 0)
@@ -345,7 +353,7 @@ int elfLoaderMemoryDestroy(ProtectedMemory *memory)
 	return r;
 }
 
-Runnable elfLoaderRunSetup(Elf *elf, ProtectedMemory *memory)
+Runnable elfLoaderRunSetup(Elf *elf, PS4ProtectedMemory *memory)
 {
 	Runnable run;
 	int r;
@@ -357,14 +365,14 @@ Runnable elfLoaderRunSetup(Elf *elf, ProtectedMemory *memory)
 	}
 
 	// FIXME: depricate for 3 method calls
-	debugPrint("elfLoaderLoad(%p, %p, %p) -> ", (void *)elf, protectedMemoryWritable(memory), protectedMemoryExecutable(memory));
+	debugPrint("elfLoaderLoad(%p, %p, %p) -> ", (void *)elf, ps4ProtectedMemoryWritableAddress(memory), ps4ProtectedMemoryExecutableAddress(memory));
 	run = NULL;
-	if((r = elfLoaderLoad(elf, protectedMemoryWritable(memory), protectedMemoryExecutable(memory))) < 0)
+	if((r = elfLoaderLoad(elf, ps4ProtectedMemoryWritableAddress(memory), ps4ProtectedMemoryExecutableAddress(memory))) < 0)
 		debugPrint("Elf could not be loaded - %i\n", r);
 	else
 	{
 		debugPrint("%i\n", r);
-		run = (Runnable)((uint8_t *)protectedMemoryExecutable(memory) + elfEntry(elf));
+		run = (Runnable)((uint8_t *)ps4ProtectedMemoryExecutableAddress(memory) + elfEntry(elf));
 	}
 
 	debugPrint("elfDestroyAndFree(%p)\n", (void *)elf);
@@ -375,7 +383,7 @@ Runnable elfLoaderRunSetup(Elf *elf, ProtectedMemory *memory)
 
 void elfLoaderRunSync(Elf *elf)
 {
-	ProtectedMemory *memory;
+	PS4ProtectedMemory *memory;
 	Runnable run;
 	int r;
 
@@ -394,7 +402,7 @@ void elfLoaderRunSync(Elf *elf)
 
 	if(run != NULL)
 	{
-		debugPrint("run(%i, {%s, %s}) [%p + elfEntry = %p] -> ", elfArgc, elfArgv[0], elfArgv[1], protectedMemoryExecutable(memory), (void *)run);
+		debugPrint("run(%i, {%s, %s}) [%p + elfEntry = %p] -> ", elfArgc, elfArgv[0], elfArgv[1], ps4ProtectedMemoryExecutableAddress(memory), (void *)run);
 
 		r = run(elfArgc, elfArgv);
 		debugPrint("%i\n", r);
@@ -452,7 +460,7 @@ void elfLoaderRunAsync(Elf *elf)
 
 	if(mm->main != NULL)
 	{
-		debugPrint("run [%p + elfEntry = %p]\n", protectedMemoryExecutable(mm->memory), (void *)mm->main);
+		debugPrint("run [%p + elfEntry = %p]\n", ps4ProtectedMemoryExecutableAddress(mm->memory), (void *)mm->main);
 		pthread_create(&thread, NULL, elfLoaderRunAsyncMain, mm);
 	}
 	else

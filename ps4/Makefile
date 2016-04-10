@@ -55,6 +55,7 @@ ifeq ($(stdio), wait)
 endif
 
 ifeq ($(target), x86-64)
+	CompilerFlags += -DBinaryLoader
 	Libraries += -lrt -lpthread
 endif
 
@@ -74,7 +75,7 @@ Payload ?= 0x926400000
 
 ###################################
 
-CompilerFlags += -DPayload=$(Payload)
+CompilerFlags += -DPayload=$(Payload) #-DText=$(Text) -DData=$(Data)
 
 ###################################
 

@@ -1,6 +1,8 @@
 #ifndef ElfLoader_H
 #define ElfLoader_H
 
+#ifdef ElfLoaderStandalone
+
 #include <stdint.h>
 
 /* Warning, written for 64bit systems - need to adapt stuff for 32 */
@@ -202,5 +204,7 @@ int elfLoaderIsLoadable(Elf *elf);
 int elfLoaderInstantiate(Elf *elf, void *memory);
 int elfLoaderRelocate(Elf *elf, void *writable, void *executable);
 int elfLoaderLoad(Elf *elf, void *writable, void *executable);
+
+#endif
 
 #endif
