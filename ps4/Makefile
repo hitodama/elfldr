@@ -55,7 +55,7 @@ ifeq ($(stdio), wait)
 endif
 
 ifeq ($(target), x86-64)
-	CompilerFlags += -DBinaryLoader
+	CompilerFlags += -DElfLoaderStandalone
 	Libraries += -lrt -lpthread
 endif
 
