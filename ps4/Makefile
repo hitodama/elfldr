@@ -57,6 +57,7 @@ endif
 ifeq ($(target), x86-64)
 	CompilerFlags += -DElfLoaderStandalone
 	Libraries += -lrt -lpthread
+	CompilerFlags += -D_GNU_SOURCE
 endif
 
 ###################################
